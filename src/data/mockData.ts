@@ -89,6 +89,16 @@ export const mockRelations: Relation[] = [
     updatedAt: '2024-01-16T10:00:00Z'
   },
   {
+    id: 'rel-001b',
+    sourceId: 'frag-001',
+    targetId: 'frag-002',
+    type: RelationType.EDGE_MATCH,
+    confidence: 82,
+    notes: '王研究员独立复核：边缘齿痕完全对应，可确定为同一块龟甲',
+    createdAt: '2024-01-16T14:20:00Z',
+    updatedAt: '2024-01-16T14:20:00Z'
+  },
+  {
     id: 'rel-002',
     sourceId: 'frag-001',
     targetId: 'frag-002',
@@ -137,5 +147,15 @@ export const mockRelations: Relation[] = [
     notes: '内容关联度不高，存疑',
     createdAt: '2024-01-18T12:05:00Z',
     updatedAt: '2024-01-18T12:05:00Z'
+  },
+  {
+    id: 'rel-007',
+    sourceId: 'frag-001',
+    targetId: 'frag-006',
+    type: RelationType.TEXT_CONTINUITY,
+    confidence: 90,
+    notes: '李教授独立研究：文字连续度极高，文例通顺，应为同一版卜辞',
+    createdAt: '2024-01-19T09:30:00Z',
+    updatedAt: '2024-01-19T09:30:00Z'
   }
 ];

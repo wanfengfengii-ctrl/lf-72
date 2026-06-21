@@ -55,11 +55,48 @@ export interface HighConfidenceGroup {
   minConfidence: number;
 }
 
+export enum ConflictGroupType {
+  MULTI_EVIDENCE = 'multi_evidence',
+  TRUE_CONFLICT = 'true_conflict'
+}
+
+export const ConflictGroupTypeLabels: Record<ConflictGroupType, string> = {
+  [ConflictGroupType.MULTI_EVIDENCE]: '多证据支持',
+  [ConflictGroupType.TRUE_CONFLICT]: '真实冲突'
+};
+
+export interface ConflictRelationGroup {
+  id: string;
+  type: ConflictGroupType;
+  fragmentPair: [string, string];
+  relations: Relation[];
+  avgConfidence: number;
+}
+
+export interface GroupingValidationDetail {
+  hasRelations: boolean;
+  relationCount: number;
+  hasConflicts: boolean;
+  conflictDetails: string[];
+  hasHighConfidenceRelations: boolean;
+  highConfidenceCount: number;
+  connectedToGrouped: boolean;
+  connectedGroupedIds: string[];
+  minConfidenceOk: boolean;
+  minConfidenceValue: number;
+}
+
+export interface GroupingValidationResult extends ValidationResult {
+  details?: GroupingValidationDetail;
+  warnings?: string[];
+}
+
 export interface AnalysisResult {
   totalFragments: number;
   totalRelations: number;
   isolatedFragments: Fragment[];
-  conflictingRelationGroups: Relation[][];
+  conflictingRelationGroups: ConflictRelationGroup[];
+  multiEvidenceGroups: ConflictRelationGroup[];
   highConfidenceRelations: Relation[];
   highConfidenceGroups: HighConfidenceGroup[];
   groupedFragments: Fragment[];

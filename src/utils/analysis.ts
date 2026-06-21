@@ -1,6 +1,7 @@
-import { Fragment, Relation, AnalysisResult } from '@/types';
+import { Fragment, Relation, AnalysisResult, ConflictGroupType, ConflictRelationGroup } from '@/types';
 
 const HIGH_CONFIDENCE_THRESHOLD = 80;
+const MIN_GROUPING_CONFIDENCE = 60;
 
 export function getIsolatedFragments(
   fragments: Fragment[],
@@ -16,29 +17,112 @@ export function getIsolatedFragments(
   return fragments.filter((f) => !fragmentIdsWithRelations.has(f.id));
 }
 
+function getPairKey(sourceId: string, targetId: string): string {
+  return [sourceId, targetId].sort().join('-');
+}
+
+function parsePairKey(pairKey: string): [string, string] {
+  const parts = pairKey.split('-');
+  return [parts[0], parts[1]];
+}
+
+export function getConflictRelationGroups(
+  relations: Relation[]
+): {
+  multiEvidenceGroups: ConflictRelationGroup[];
+  trueConflictGroups: ConflictRelationGroup[];
+} {
+  const pairRelations = new Map<string, Relation[]>();
+
+  relations.forEach((r) => {
+    const pairKey = getPairKey(r.sourceId, r.targetId);
+    if (!pairRelations.has(pairKey)) {
+      pairRelations.set(pairKey, []);
+    }
+    pairRelations.get(pairKey)!.push(r);
+  });
+
+  const multiEvidenceGroups: ConflictRelationGroup[] = [];
+  const trueConflictGroups: ConflictRelationGroup[] = [];
+
+  pairRelations.forEach((pairRels, pairKey) => {
+    if (pairRels.length < 2) return;
+
+    const typeMap = new Map<string, Relation[]>();
+    pairRels.forEach((r) => {
+      if (!typeMap.has(r.type)) {
+        typeMap.set(r.type, []);
+      }
+      typeMap.get(r.type)!.push(r);
+    });
+
+    const fragmentPair = parsePairKey(pairKey);
+
+    typeMap.forEach((typeRels, type) => {
+      if (typeRels.length >= 2) {
+        const avgConfidence = Math.round(
+          typeRels.reduce((sum, r) => sum + r.confidence, 0) / typeRels.length
+        );
+        multiEvidenceGroups.push({
+          id: `multi-${pairKey}-${type}`,
+          type: ConflictGroupType.MULTI_EVIDENCE,
+          fragmentPair,
+          relations: typeRels.sort((a, b) => b.confidence - a.confidence),
+          avgConfidence
+        });
+      }
+    });
+
+    const distinctTypes = Array.from(typeMap.keys());
+    const hasOpposingEvidence = distinctTypes.length >= 2;
+
+    if (hasOpposingEvidence) {
+      const confidences = pairRels.map((r) => r.confidence);
+      const maxConfidence = Math.max(...confidences);
+      const minConfidence = Math.min(...confidences);
+      const confidenceSpread = maxConfidence - minConfidence;
+
+      const hasMultipleHighConfidenceDifferentTypes =
+        distinctTypes.filter((t) =>
+          typeMap.get(t)!.some((r) => r.confidence >= HIGH_CONFIDENCE_THRESHOLD)
+        ).length >= 2;
+
+      const isTrueConflict =
+        confidenceSpread >= 40 || hasMultipleHighConfidenceDifferentTypes;
+
+      if (isTrueConflict) {
+        const avgConfidence = Math.round(
+          pairRels.reduce((sum, r) => sum + r.confidence, 0) / pairRels.length
+        );
+        trueConflictGroups.push({
+          id: `conflict-${pairKey}`,
+          type: ConflictGroupType.TRUE_CONFLICT,
+          fragmentPair,
+          relations: pairRels.sort((a, b) => b.confidence - a.confidence),
+          avgConfidence
+        });
+      }
+    }
+  });
+
+  multiEvidenceGroups.sort((a, b) => b.avgConfidence - a.avgConfidence);
+  trueConflictGroups.sort((a, b) => b.relations.length - a.relations.length);
+
+  return { multiEvidenceGroups, trueConflictGroups };
+}
+
 export function getConflictingRelationGroups(
   relations: Relation[]
 ): Relation[][] {
-  const pairTypeRelations = new Map<string, Relation[]>();
+  const { trueConflictGroups } = getConflictRelationGroups(relations);
+  return trueConflictGroups.map((g) => g.relations);
+}
 
-  relations.forEach((r) => {
-    const pairKey = [r.sourceId, r.targetId].sort().join('-');
-    const key = `${pairKey}-${r.type}`;
-    if (!pairTypeRelations.has(key)) {
-      pairTypeRelations.set(key, []);
-    }
-    pairTypeRelations.get(key)!.push(r);
-  });
-
-  const conflictingGroups: Relation[][] = [];
-
-  pairTypeRelations.forEach((group) => {
-    if (group.length >= 2) {
-      conflictingGroups.push(group);
-    }
-  });
-
-  return conflictingGroups;
+export function getMultiEvidenceRelationGroups(
+  relations: Relation[]
+): Relation[][] {
+  const { multiEvidenceGroups } = getConflictRelationGroups(relations);
+  return multiEvidenceGroups.map((g) => g.relations);
 }
 
 export interface HighConfidenceGroup {
@@ -136,11 +220,14 @@ export function analyzeNetwork(
   fragments: Fragment[],
   relations: Relation[]
 ): AnalysisResult {
+  const { multiEvidenceGroups, trueConflictGroups } = getConflictRelationGroups(relations);
+
   return {
     totalFragments: fragments.length,
     totalRelations: relations.length,
     isolatedFragments: getIsolatedFragments(fragments, relations),
-    conflictingRelationGroups: getConflictingRelationGroups(relations),
+    conflictingRelationGroups: trueConflictGroups,
+    multiEvidenceGroups,
     highConfidenceRelations: getHighConfidenceRelations(relations),
     highConfidenceGroups: getHighConfidenceGroups(fragments, relations),
     groupedFragments: getGroupedFragments(fragments)
@@ -173,3 +260,5 @@ export function getRelatedFragments(
 
   return fragments.filter((f) => relatedIds.has(f.id));
 }
+
+export { HIGH_CONFIDENCE_THRESHOLD, MIN_GROUPING_CONFIDENCE };

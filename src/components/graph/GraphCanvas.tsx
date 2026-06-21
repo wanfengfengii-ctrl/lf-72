@@ -38,6 +38,27 @@ interface GraphCanvasProps {
   onConnect?: (sourceId: string, targetId: string) => void;
 }
 
+function useDebouncedCallback<T extends (...args: any[]) => void>(callback: T, delay: number) {
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const callbackRef = useRef(callback);
+
+  useEffect(() => {
+    callbackRef.current = callback;
+  }, [callback]);
+
+  return useCallback(
+    (...args: Parameters<T>) => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+      timeoutRef.current = setTimeout(() => {
+        callbackRef.current(...args);
+      }, delay);
+    },
+    [delay]
+  );
+}
+
 export default function GraphCanvas({
   onNodeClick,
   onEdgeClick,
@@ -59,6 +80,7 @@ export default function GraphCanvas({
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const reactFlowInstance = useRef<ReactFlowInstance | null>(null);
   const isFirstInit = useRef(true);
+  const pendingPositions = useRef<Record<string, { x: number; y: number }>>({});
 
   const isolatedFragmentIds = useMemo(() => {
     const isolated = getIsolatedFragments(fragments, relations);
@@ -73,7 +95,7 @@ export default function GraphCanvas({
 
     fragments.forEach((fragment, index) => {
       if (!nodePositions[fragment.id]) {
-        const angle = (index / fragments.length) * 2 * Math.PI - Math.PI / 2;
+        const angle = (index / Math.max(fragments.length, 1)) * 2 * Math.PI - Math.PI / 2;
         positions[fragment.id] = {
           x: centerX + radius * Math.cos(angle),
           y: centerY + radius * Math.sin(angle)
@@ -84,21 +106,47 @@ export default function GraphCanvas({
     return positions;
   }, [fragments, nodePositions]);
 
+  const flushPendingPositions = useCallback(() => {
+    const pending = pendingPositions.current;
+    const ids = Object.keys(pending);
+    if (ids.length > 0) {
+      useStore.getState().setNodePositions({
+        ...useStore.getState().nodePositions,
+        ...pending
+      });
+      pendingPositions.current = {};
+    }
+  }, []);
+
+  const debouncedFlush = useDebouncedCallback(flushPendingPositions, 150);
+
   const handleNodesChangePersist = useCallback(
     (changes: NodeChange[]) => {
       onNodesChange(changes);
 
+      let hasPositionChanges = false;
       changes.forEach((change) => {
         if (change.type === 'position' && change.position && typeof change.id === 'string') {
-          setNodePosition(change.id, {
+          pendingPositions.current[change.id] = {
             x: change.position.x,
             y: change.position.y
-          });
+          };
+          hasPositionChanges = true;
         }
       });
+
+      if (hasPositionChanges) {
+        debouncedFlush();
+      }
     },
-    [onNodesChange, setNodePosition]
+    [onNodesChange, debouncedFlush]
   );
+
+  useEffect(() => {
+    return () => {
+      flushPendingPositions();
+    };
+  }, [flushPendingPositions]);
 
   useEffect(() => {
     const newNodes: Node[] = fragments.map((fragment) => {
@@ -129,7 +177,8 @@ export default function GraphCanvas({
           opacity: matchesSearch ? 1 : 0.3,
           transition: 'opacity 0.3s ease'
         },
-        selected: isSelected
+        selected: isSelected,
+        draggable: true
       };
     });
 
@@ -236,6 +285,8 @@ export default function GraphCanvas({
         fitViewOptions={{ padding: 0.2 }}
         attributionPosition="bottom-right"
         className="bg-stone-50"
+        panOnScroll
+        selectionOnDrag
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#D6D3D1" />
         <Controls 

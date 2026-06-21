@@ -63,6 +63,7 @@ export default function RelationDialog({
       formData.targetId,
       formData.type,
       formData.confidence,
+      formData.notes,
       relations,
       editRelationId || undefined
     );

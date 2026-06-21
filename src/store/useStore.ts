@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { Fragment, Relation, RelationType, NodePositionsMap } from '@/types';
-import { validateFragmentCode, validateAddRelation, validateGrouping } from '@/utils/validation';
+import { Fragment, Relation, RelationType, NodePositionsMap, GroupingValidationResult } from '@/types';
+import { validateFragmentCode, validateAddRelation, validateGrouping, validateGroupingDetailed } from '@/utils/validation';
 import { analyzeNetwork, getConflictingRelationGroups } from '@/utils/analysis';
 import { mockFragments, mockRelations } from '@/data/mockData';
 
@@ -27,12 +27,15 @@ interface AppState {
 
   setNodePosition: (id: string, position: { x: number; y: number }) => void;
   setNodePositions: (positions: NodePositionsMap) => void;
+  clearNodePositions: () => void;
+  resetNodePositionsToDefault: () => void;
 
   setSearchKeyword: (keyword: string) => void;
   setFilterType: (type: RelationType | 'all') => void;
   setFilterConfidenceMin: (value: number) => void;
 
   toggleGrouped: (fragmentId: string) => { success: boolean; message: string };
+  validateGroupingForFragment: (fragmentId: string) => GroupingValidationResult;
 
   getAnalysis: () => ReturnType<typeof analyzeNetwork>;
 }
@@ -92,17 +95,20 @@ export const useStore = create<AppState>()(
       },
 
       deleteFragment: (id) => {
-        const { fragments, relations, selectedFragmentId } = get();
+        const { fragments, relations, selectedFragmentId, nodePositions } = get();
         
         const filteredFragments = fragments.filter((f) => f.id !== id);
         const filteredRelations = relations.filter(
           (r) => r.sourceId !== id && r.targetId !== id
         );
+        const newNodePositions = { ...nodePositions };
+        delete newNodePositions[id];
 
         set({
           fragments: filteredFragments,
           relations: filteredRelations,
-          selectedFragmentId: selectedFragmentId === id ? null : selectedFragmentId
+          selectedFragmentId: selectedFragmentId === id ? null : selectedFragmentId,
+          nodePositions: newNodePositions
         });
       },
 
@@ -117,6 +123,7 @@ export const useStore = create<AppState>()(
           data.targetId,
           data.type,
           data.confidence,
+          data.notes,
           relations
         );
 
@@ -153,6 +160,7 @@ export const useStore = create<AppState>()(
           targetId,
           type,
           confidence,
+          data.notes ?? existing.notes,
           relations,
           id
         );
@@ -197,6 +205,28 @@ export const useStore = create<AppState>()(
         set({ nodePositions: positions });
       },
 
+      clearNodePositions: () => {
+        set({ nodePositions: {} });
+      },
+
+      resetNodePositionsToDefault: () => {
+        const { fragments } = get();
+        const positions: NodePositionsMap = {};
+        const centerX = 400;
+        const centerY = 300;
+        const radius = 200;
+
+        fragments.forEach((fragment, index) => {
+          const angle = (index / Math.max(fragments.length, 1)) * 2 * Math.PI - Math.PI / 2;
+          positions[fragment.id] = {
+            x: centerX + radius * Math.cos(angle),
+            y: centerY + radius * Math.sin(angle)
+          };
+        });
+
+        set({ nodePositions: positions });
+      },
+
       setSearchKeyword: (keyword) => {
         set({ searchKeyword: keyword });
       },
@@ -210,15 +240,14 @@ export const useStore = create<AppState>()(
       },
 
       toggleGrouped: (fragmentId) => {
-        const { fragments, relations } = get();
+        const { fragments } = get();
         const fragment = fragments.find((f) => f.id === fragmentId);
         if (!fragment) {
           return { success: false, message: '残片不存在' };
         }
 
         if (!fragment.isGrouped) {
-          const conflictingGroups = getConflictingRelationGroups(relations);
-          const validation = validateGrouping(fragmentId, relations, conflictingGroups);
+          const validation = get().validateGroupingForFragment(fragmentId);
           if (!validation.valid) {
             return { success: false, message: validation.message };
           }
@@ -235,6 +264,11 @@ export const useStore = create<AppState>()(
           success: true,
           message: fragment.isGrouped ? '已取消定组' : '已标记为已定组'
         };
+      },
+
+      validateGroupingForFragment: (fragmentId) => {
+        const { fragments, relations } = get();
+        return validateGroupingDetailed(fragmentId, fragments, relations);
       },
 
       getAnalysis: () => {

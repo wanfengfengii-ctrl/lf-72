@@ -1,10 +1,18 @@
-import { useState, useEffect } from 'react';
-import { CheckCircle, XCircle } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import {
+  CheckCircle,
+  XCircle,
+  AlertTriangle,
+  Info,
+  AlertCircle,
+  CheckCircle2,
+  XCircle as XCircle2
+} from 'lucide-react';
 import Dialog from '@/components/common/Dialog';
 import { useStore } from '@/store/useStore';
-import { validateFragmentCode, validateGrouping } from '@/utils/validation';
-import { getConflictingRelationGroups } from '@/utils/analysis';
-import { Fragment } from '@/types';
+import { validateFragmentCode } from '@/utils/validation';
+import { getFragmentRelations, HIGH_CONFIDENCE_THRESHOLD, MIN_GROUPING_CONFIDENCE } from '@/utils/analysis';
+import { Fragment, GroupingValidationResult } from '@/types';
 
 interface FragmentDialogProps {
   isOpen: boolean;
@@ -17,7 +25,7 @@ export default function FragmentDialog({
   onClose,
   editFragmentId
 }: FragmentDialogProps) {
-  const { fragments, relations, addFragment, updateFragment, toggleGrouped } = useStore();
+  const { fragments, relations, addFragment, updateFragment, toggleGrouped, validateGroupingForFragment } = useStore();
 
   const [formData, setFormData] = useState({
     code: '',
@@ -56,6 +64,16 @@ export default function FragmentDialog({
     setError('');
     setCodeError('');
   }, [editFragment, isOpen]);
+
+  const groupingValidation: GroupingValidationResult | null = useMemo(() => {
+    if (!isEditing || !editFragmentId) return null;
+    return validateGroupingForFragment(editFragmentId);
+  }, [isEditing, editFragmentId, fragments, relations, validateGroupingForFragment]);
+
+  const fragmentRelations = useMemo(() => {
+    if (!editFragmentId) return [];
+    return getFragmentRelations(editFragmentId, relations);
+  }, [editFragmentId, relations]);
 
   const handleCodeChange = (value: string) => {
     setFormData((prev) => ({ ...prev, code: value }));
@@ -119,11 +137,7 @@ export default function FragmentDialog({
   };
 
   const canGroup = isEditing && editFragment
-    ? validateGrouping(
-        editFragmentId!,
-        relations,
-        getConflictingRelationGroups(relations)
-      ).valid || editFragment.isGrouped
+    ? (groupingValidation?.valid ?? false) || editFragment.isGrouped
     : false;
 
   return (
@@ -255,16 +269,122 @@ export default function FragmentDialog({
 
         {isEditing && editFragment && (
           <div className="pt-4 border-t border-stone-200">
+            <div className="flex items-center gap-2 mb-3">
+              <h4 className="text-sm font-semibold text-stone-700">
+                定组状态
+              </h4>
+              <Info className="w-3.5 h-3.5 text-stone-400" />
+            </div>
+
+            {groupingValidation?.details && (
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                <div className={`p-2 rounded-lg flex items-center gap-2 text-xs ${
+                  groupingValidation.details.hasRelations
+                    ? 'bg-emerald-50 text-emerald-700'
+                    : 'bg-red-50 text-red-700'
+                }`}>
+                  {groupingValidation.details.hasRelations ? (
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                  ) : (
+                    <XCircle2 className="w-3.5 h-3.5" />
+                  )}
+                  <span>
+                    缀合关系: {groupingValidation.details.relationCount} 条
+                    {!groupingValidation.details.hasRelations && ' (至少需要 1 条)'}
+                  </span>
+                </div>
+
+                <div className={`p-2 rounded-lg flex items-center gap-2 text-xs ${
+                  !groupingValidation.details.hasConflicts
+                    ? 'bg-emerald-50 text-emerald-700'
+                    : 'bg-red-50 text-red-700'
+                }`}>
+                  {!groupingValidation.details.hasConflicts ? (
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                  ) : (
+                    <XCircle2 className="w-3.5 h-3.5" />
+                  )}
+                  <span>
+                    {!groupingValidation.details.hasConflicts
+                      ? '无冲突关系'
+                      : `存在 ${groupingValidation.details.conflictDetails.length} 组冲突`}
+                  </span>
+                </div>
+
+                <div className={`p-2 rounded-lg flex items-center gap-2 text-xs ${
+                  groupingValidation.details.hasHighConfidenceRelations
+                    ? 'bg-emerald-50 text-emerald-700'
+                    : 'bg-amber-50 text-amber-700'
+                }`}>
+                  {groupingValidation.details.hasHighConfidenceRelations ? (
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                  ) : (
+                    <AlertCircle className="w-3.5 h-3.5" />
+                  )}
+                  <span>
+                    高可信关系 (≥{HIGH_CONFIDENCE_THRESHOLD}%): {groupingValidation.details.highConfidenceCount} 条
+                  </span>
+                </div>
+
+                <div className={`p-2 rounded-lg flex items-center gap-2 text-xs ${
+                  groupingValidation.details.minConfidenceOk
+                    ? 'bg-emerald-50 text-emerald-700'
+                    : 'bg-amber-50 text-amber-700'
+                }`}>
+                  {groupingValidation.details.minConfidenceOk ? (
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                  ) : (
+                    <AlertCircle className="w-3.5 h-3.5" />
+                  )}
+                  <span>
+                    最低可信度: {groupingValidation.details.minConfidenceValue}%
+                    {!groupingValidation.details.minConfidenceOk &&
+                      ` (建议 ≥${MIN_GROUPING_CONFIDENCE}%)`}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {groupingValidation?.details?.conflictDetails &&
+              groupingValidation.details.conflictDetails.length > 0 && (
+                <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <div className="flex items-center gap-2 text-xs font-medium text-red-700 mb-2">
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    冲突详情（需解决后方可定组）：
+                  </div>
+                  <ul className="space-y-1">
+                    {groupingValidation.details.conflictDetails.map((detail, i) => (
+                      <li key={i} className="text-xs text-red-600 list-disc list-inside">
+                        {detail}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+            {groupingValidation?.warnings && groupingValidation.warnings.length > 0 && (
+              <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <div className="flex items-center gap-2 text-xs font-medium text-amber-700 mb-2">
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  定组建议（{groupingValidation.warnings.length} 条）：
+                </div>
+                <ul className="space-y-1">
+                  {groupingValidation.warnings.map((warning, i) => (
+                    <li key={i} className="text-xs text-amber-700 list-disc list-inside">
+                      {warning}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             <div className="flex items-center justify-between">
-              <div>
-                <div className="text-sm font-medium text-stone-700">
-                  定组状态
-                </div>
-                <div className="text-xs text-stone-500 mt-0.5">
-                  {canGroup
-                    ? '可以标记为已定组'
-                    : '存在冲突关系时不能标记为已定组'}
-                </div>
+              <div className="text-xs text-stone-500">
+                {editFragment.isGrouped
+                  ? '该残片已标记为已定组，可点击取消'
+                  : canGroup
+                  ? groupingValidation?.message || '可以标记为已定组'
+                  : groupingValidation?.message || '暂不满足定组条件'}
               </div>
               <button
                 type="button"
@@ -293,6 +413,32 @@ export default function FragmentDialog({
                 )}
               </button>
             </div>
+
+            {fragmentRelations.length > 0 && (
+              <div className="mt-4 pt-3 border-t border-stone-100">
+                <div className="text-xs font-medium text-stone-500 mb-2">
+                  已建立的缀合关系（{fragmentRelations.length} 条）：
+                </div>
+                <div className="space-y-1 max-h-24 overflow-y-auto">
+                  {fragmentRelations.map((rel) => {
+                    const otherId =
+                      rel.sourceId === editFragmentId ? rel.targetId : rel.sourceId;
+                    const other = fragments.find((f) => f.id === otherId);
+                    return (
+                      <div
+                        key={rel.id}
+                        className="text-xs text-stone-600 flex items-center justify-between px-2 py-1 bg-stone-50 rounded"
+                      >
+                        <span>↔ {other?.code || otherId}</span>
+                        <span className="font-medium" style={{ opacity: rel.confidence / 100 + 0.3 }}>
+                          {rel.confidence}%
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </form>
