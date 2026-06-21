@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { Fragment, Relation, RelationType } from '@/types';
+import { Fragment, Relation, RelationType, NodePositionsMap } from '@/types';
 import { validateFragmentCode, validateAddRelation, validateGrouping } from '@/utils/validation';
 import { analyzeNetwork, getConflictingRelationGroups } from '@/utils/analysis';
 import { mockFragments, mockRelations } from '@/data/mockData';
@@ -8,6 +8,7 @@ import { mockFragments, mockRelations } from '@/data/mockData';
 interface AppState {
   fragments: Fragment[];
   relations: Relation[];
+  nodePositions: NodePositionsMap;
   selectedFragmentId: string | null;
   selectedRelationId: string | null;
   searchKeyword: string;
@@ -23,6 +24,9 @@ interface AppState {
   updateRelation: (id: string, data: Partial<Relation>) => { success: boolean; message: string };
   deleteRelation: (id: string) => void;
   selectRelation: (id: string | null) => void;
+
+  setNodePosition: (id: string, position: { x: number; y: number }) => void;
+  setNodePositions: (positions: NodePositionsMap) => void;
 
   setSearchKeyword: (keyword: string) => void;
   setFilterType: (type: RelationType | 'all') => void;
@@ -40,6 +44,7 @@ export const useStore = create<AppState>()(
     (set, get) => ({
       fragments: mockFragments,
       relations: mockRelations,
+      nodePositions: {},
       selectedFragmentId: null,
       selectedRelationId: null,
       searchKeyword: '',
@@ -178,6 +183,20 @@ export const useStore = create<AppState>()(
         set({ selectedRelationId: id, selectedFragmentId: null });
       },
 
+      setNodePosition: (id, position) => {
+        const { nodePositions } = get();
+        set({
+          nodePositions: {
+            ...nodePositions,
+            [id]: position
+          }
+        });
+      },
+
+      setNodePositions: (positions) => {
+        set({ nodePositions: positions });
+      },
+
       setSearchKeyword: (keyword) => {
         set({ searchKeyword: keyword });
       },
@@ -227,7 +246,8 @@ export const useStore = create<AppState>()(
       name: 'oracle-bone-fragments-storage',
       partialize: (state) => ({
         fragments: state.fragments,
-        relations: state.relations
+        relations: state.relations,
+        nodePositions: state.nodePositions
       })
     }
   )

@@ -8,17 +8,18 @@ import ReactFlow, {
   Connection,
   useNodesState,
   useEdgesState,
-  addEdge,
   BackgroundVariant,
   NodeMouseHandler,
   EdgeMouseHandler,
   ReactFlowInstance,
-  MarkerType
+  MarkerType,
+  NodeChange,
+  applyNodeChanges
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
 import { useStore } from '@/store/useStore';
-import { RelationType, RelationTypeColors } from '@/types';
+import { RelationTypeColors } from '@/types';
 import { getIsolatedFragments, getFragmentRelations } from '@/utils/analysis';
 import FragmentNode from './FragmentNode';
 import RelationEdge from './RelationEdge';
@@ -47,39 +48,64 @@ export default function GraphCanvas({
     relations,
     selectedFragmentId,
     selectedRelationId,
-    searchKeyword
+    searchKeyword,
+    nodePositions,
+    setNodePosition,
+    setNodePositions
   } = useStore();
 
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const reactFlowInstance = useRef<ReactFlowInstance | null>(null);
+  const isFirstInit = useRef(true);
 
   const isolatedFragmentIds = useMemo(() => {
     const isolated = getIsolatedFragments(fragments, relations);
     return new Set(isolated.map((f) => f.id));
   }, [fragments, relations]);
 
-  const initialPositions = useMemo(() => {
+  const defaultPositions = useMemo(() => {
     const positions: Record<string, { x: number; y: number }> = {};
     const centerX = 400;
     const centerY = 300;
     const radius = 200;
 
     fragments.forEach((fragment, index) => {
-      const angle = (index / fragments.length) * 2 * Math.PI - Math.PI / 2;
-      positions[fragment.id] = {
-        x: centerX + radius * Math.cos(angle),
-        y: centerY + radius * Math.sin(angle)
-      };
+      if (!nodePositions[fragment.id]) {
+        const angle = (index / fragments.length) * 2 * Math.PI - Math.PI / 2;
+        positions[fragment.id] = {
+          x: centerX + radius * Math.cos(angle),
+          y: centerY + radius * Math.sin(angle)
+        };
+      }
     });
 
     return positions;
-  }, [fragments]);
+  }, [fragments, nodePositions]);
+
+  const handleNodesChangePersist = useCallback(
+    (changes: NodeChange[]) => {
+      onNodesChange(changes);
+
+      changes.forEach((change) => {
+        if (change.type === 'position' && change.position && typeof change.id === 'string') {
+          setNodePosition(change.id, {
+            x: change.position.x,
+            y: change.position.y
+          });
+        }
+      });
+    },
+    [onNodesChange, setNodePosition]
+  );
 
   useEffect(() => {
     const newNodes: Node[] = fragments.map((fragment) => {
-      const pos = initialPositions[fragment.id] || { x: 0, y: 0 };
+      const savedPos = nodePositions[fragment.id];
+      const defaultPos = defaultPositions[fragment.id];
+      const pos = savedPos || defaultPos || { x: 0, y: 0 };
+
       const relationCount = getFragmentRelations(fragment.id, relations).length;
       const isIsolated = isolatedFragmentIds.has(fragment.id);
       const isSelected = fragment.id === selectedFragmentId;
@@ -135,7 +161,13 @@ export default function GraphCanvas({
       };
     });
 
-    setNodes(newNodes);
+    setNodes((currentNodes) => {
+      const positionMap = new Map(currentNodes.map((n) => [n.id, n.position]));
+      return newNodes.map((n) => ({
+        ...n,
+        position: positionMap.has(n.id) ? positionMap.get(n.id)! : n.position
+      }));
+    });
     setEdges(newEdges);
   }, [
     fragments,
@@ -143,7 +175,8 @@ export default function GraphCanvas({
     selectedFragmentId,
     selectedRelationId,
     isolatedFragmentIds,
-    initialPositions,
+    defaultPositions,
+    nodePositions,
     searchKeyword,
     setNodes,
     setEdges
@@ -151,8 +184,11 @@ export default function GraphCanvas({
 
   const handleInit = useCallback((instance: ReactFlowInstance) => {
     reactFlowInstance.current = instance;
-    instance.fitView({ padding: 0.2 });
-  }, []);
+    if (isFirstInit.current && Object.keys(nodePositions).length === 0) {
+      instance.fitView({ padding: 0.2 });
+    }
+    isFirstInit.current = false;
+  }, [nodePositions]);
 
   const handleNodeClick: NodeMouseHandler = useCallback(
     (_, node) => {
@@ -187,7 +223,7 @@ export default function GraphCanvas({
       <ReactFlow
         nodes={nodes}
         edges={edges}
-        onNodesChange={onNodesChange}
+        onNodesChange={handleNodesChangePersist}
         onEdgesChange={onEdgesChange}
         onConnect={handleConnect}
         onInit={handleInit}
@@ -196,7 +232,7 @@ export default function GraphCanvas({
         onPaneClick={handlePaneClick}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
-        fitView
+        fitView={Object.keys(nodePositions).length === 0}
         fitViewOptions={{ padding: 0.2 }}
         attributionPosition="bottom-right"
         className="bg-stone-50"

@@ -173,45 +173,84 @@ export default function AnalysisPanel({
               <span className="px-1.5 py-0.5 text-xs bg-emerald-100 text-emerald-600 rounded-full">
                 ≥80%
               </span>
+              {analysis.highConfidenceGroups.length > 0 && (
+                <span className="ml-auto px-1.5 py-0.5 text-xs bg-emerald-100 text-emerald-700 rounded">
+                  {analysis.highConfidenceGroups.length} 组
+                </span>
+              )}
             </h3>
           </div>
-          <div className="max-h-48 overflow-y-auto">
-            {analysis.highConfidenceRelations.length === 0 ? (
+          <div className="max-h-64 overflow-y-auto">
+            {analysis.highConfidenceGroups.length === 0 ? (
               <div className="p-4 text-center text-sm text-stone-400">
                 暂无高可信组合
               </div>
             ) : (
               <div className="divide-y divide-stone-100">
-                {analysis.highConfidenceRelations.map((relation) => {
-                  const source = fragments.find((f) => f.id === relation.sourceId);
-                  const target = fragments.find((f) => f.id === relation.targetId);
-                  const color = RelationTypeColors[relation.type];
+                {analysis.highConfidenceGroups.map((group, groupIndex) => {
+                  const groupFragments = group.fragmentIds
+                    .map((id) => fragments.find((f) => f.id === id))
+                    .filter(Boolean);
 
                   return (
-                    <div
-                      key={relation.id}
-                      className="p-3 cursor-pointer hover:bg-emerald-50 transition-colors"
-                      onClick={() => handleRelationClick(relation.id)}
-                    >
-                      <div className="flex items-center justify-between">
+                    <div key={group.id} className="p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="text-xs font-semibold text-stone-600">
+                          组合 {groupIndex + 1}
+                        </div>
                         <div className="flex items-center gap-2">
-                          <span
-                            className="w-2 h-2 rounded-full"
-                            style={{ backgroundColor: color }}
-                          />
-                          <span className="text-sm font-medium text-stone-700">
-                            {source?.code} — {target?.code}
+                          <span className="text-xs px-1.5 py-0.5 bg-emerald-50 text-emerald-700 rounded">
+                            {group.fragmentIds.length} 块残片
+                          </span>
+                          <span className="text-xs px-1.5 py-0.5 bg-emerald-50 text-emerald-700 rounded">
+                            平均 {group.avgConfidence}%
                           </span>
                         </div>
-                        <span
-                          className="text-sm font-bold"
-                          style={{ color }}
-                        >
-                          {relation.confidence}%
-                        </span>
                       </div>
-                      <div className="text-xs text-stone-500 mt-1 ml-4">
-                        {RelationTypeLabels[relation.type]}
+
+                      <div className="flex flex-wrap gap-1 mb-2">
+                        {groupFragments.map((frag) => (
+                          <span
+                            key={frag!.id}
+                            className="text-xs px-2 py-1 bg-amber-50 text-amber-800 rounded-md border border-amber-200 cursor-pointer hover:bg-amber-100 transition-colors"
+                            onClick={() => handleFragmentClick(frag!.id)}
+                          >
+                            {frag!.code}
+                          </span>
+                        ))}
+                      </div>
+
+                      <div className="space-y-1 pl-2 border-l-2 border-emerald-200">
+                        {group.relations.map((relation) => {
+                          const source = fragments.find((f) => f.id === relation.sourceId);
+                          const target = fragments.find((f) => f.id === relation.targetId);
+                          const color = RelationTypeColors[relation.type];
+
+                          return (
+                            <div
+                              key={relation.id}
+                              className="text-xs flex items-center gap-2 cursor-pointer hover:bg-emerald-50 p-1 rounded transition-colors"
+                              onClick={() => handleRelationClick(relation.id)}
+                            >
+                              <span
+                                className="w-2 h-2 rounded-full flex-shrink-0"
+                                style={{ backgroundColor: color }}
+                              />
+                              <span className="text-stone-600">
+                                {source?.code}—{target?.code}
+                              </span>
+                              <span style={{ color }} className="font-medium">
+                                {RelationTypeLabels[relation.type]}
+                              </span>
+                              <span
+                                className="ml-auto font-bold"
+                                style={{ color }}
+                              >
+                                {relation.confidence}%
+                              </span>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   );

@@ -47,14 +47,30 @@ export interface Relation {
   updatedAt: string;
 }
 
+export interface HighConfidenceGroup {
+  id: string;
+  fragmentIds: string[];
+  relations: Relation[];
+  avgConfidence: number;
+  minConfidence: number;
+}
+
 export interface AnalysisResult {
   totalFragments: number;
   totalRelations: number;
   isolatedFragments: Fragment[];
   conflictingRelationGroups: Relation[][];
   highConfidenceRelations: Relation[];
+  highConfidenceGroups: HighConfidenceGroup[];
   groupedFragments: Fragment[];
 }
+
+export interface NodePosition {
+  x: number;
+  y: number;
+}
+
+export type NodePositionsMap = Record<string, NodePosition>;
 
 export interface ValidationResult {
   valid: boolean;
