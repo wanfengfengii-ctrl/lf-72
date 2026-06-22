@@ -8,10 +8,12 @@ import {
   Zap,
   Sparkles,
   Info,
-  Award
+  Award,
+  GitBranch,
+  Layers3
 } from 'lucide-react';
 import { useStore } from '@/store/useStore';
-import { RelationTypeLabels, RelationTypeColors, ConflictGroupTypeLabels } from '@/types';
+import { RelationTypeLabels, RelationTypeColors, ConflictGroupTypeLabels, MultiEvidenceKind, MultiEvidenceKindLabels, Relation } from '@/types';
 
 interface AnalysisPanelProps {
   onFragmentClick?: (fragmentId: string) => void;
@@ -192,11 +194,11 @@ export default function AnalysisPanel({
               )}
               <span className="ml-auto text-xs text-stone-400 font-normal flex items-center gap-1">
                 <Info className="w-3 h-3" />
-                同类型多条独立证据
+                同类型重复 & 跨依据汇聚
               </span>
             </h3>
           </div>
-          <div className="max-h-56 overflow-y-auto">
+          <div className="max-h-64 overflow-y-auto">
             {analysis.multiEvidenceGroups.length === 0 ? (
               <div className="p-4 text-center text-sm text-stone-400">
                 暂许多证据支持组
@@ -207,62 +209,161 @@ export default function AnalysisPanel({
                   const fragmentCodes = group.fragmentPair
                     .map((id) => fragments.find((f) => f.id === id)?.code || id)
                     .join(' ↔ ');
-                  const evidenceType = group.relations[0]?.type;
-                  const typeColor = evidenceType ? RelationTypeColors[evidenceType] : '#78716C';
-                  const typeLabel = evidenceType ? RelationTypeLabels[evidenceType] : '未知';
+                  const isCrossType = group.evidenceKind === MultiEvidenceKind.CROSS_TYPE;
+                  const kindLabel = group.evidenceKind != null
+                    ? MultiEvidenceKindLabels[group.evidenceKind]
+                    : '多证据';
+                  const typeCount = group.evidenceTypeCount ?? 1;
+
+                  const typeMap = new Map<string, Relation[]>();
+                  group.relations.forEach((r) => {
+                    if (!typeMap.has(r.type)) typeMap.set(r.type, []);
+                    typeMap.get(r.type)!.push(r);
+                  });
+                  const typeGroups = Array.from(typeMap.entries());
 
                   return (
-                    <div key={group.id} className="p-3">
+                    <div
+                      key={group.id}
+                      className={`p-3 ${isCrossType ? 'bg-teal-50/40' : ''}`}
+                    >
                       <div className="flex items-center justify-between mb-2">
-                        <div className="text-xs font-semibold text-stone-700 flex items-center gap-2">
+                        <div className="text-xs font-semibold text-stone-700 flex items-center gap-2 flex-wrap">
                           {fragmentCodes}
                           <span
-                            className="px-1.5 py-0.5 text-xs rounded font-medium"
-                            style={{
-                              backgroundColor: `${typeColor}20`,
-                              color: typeColor
-                            }}
+                            className={`px-1.5 py-0.5 text-xs rounded font-medium flex items-center gap-1 ${
+                              isCrossType
+                                ? 'bg-teal-100 text-teal-700'
+                                : 'bg-emerald-100 text-emerald-700'
+                            }`}
                           >
-                            {typeLabel}
+                            {isCrossType ? (
+                              <GitBranch className="w-3 h-3" />
+                            ) : (
+                              <Layers3 className="w-3 h-3" />
+                            )}
+                            {kindLabel}
                           </span>
+                          {isCrossType && (
+                            <span className="px-1.5 py-0.5 text-xs rounded bg-teal-50 text-teal-700 border border-teal-200">
+                              {typeCount} 种依据
+                            </span>
+                          )}
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className="text-xs px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded">
+                          <span className={`text-xs px-1.5 py-0.5 rounded ${
+                            isCrossType
+                              ? 'bg-teal-100 text-teal-700'
+                              : 'bg-emerald-100 text-emerald-700'
+                          }`}>
                             {group.relations.length} 条证据
                           </span>
-                          <span className="text-xs px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded">
+                          <span className={`text-xs px-1.5 py-0.5 rounded ${
+                            isCrossType
+                              ? 'bg-teal-100 text-teal-700'
+                              : 'bg-emerald-100 text-emerald-700'
+                          }`}>
                             平均 {group.avgConfidence}%
                           </span>
                         </div>
                       </div>
-                      <div className="space-y-1 pl-2 border-l-2 border-emerald-300">
-                        {group.relations.map((relation) => {
-                          const source = fragments.find((f) => f.id === relation.sourceId);
-                          const target = fragments.find((f) => f.id === relation.targetId);
 
+                      {isCrossType ? (
+                        <div className="space-y-2 pl-2 border-l-2 border-teal-300">
+                          {typeGroups.map(([relType, rels]) => {
+                            const typeColor = RelationTypeColors[relType as keyof typeof RelationTypeColors] || '#78716C';
+                            const relTypeLabel = RelationTypeLabels[relType as keyof typeof RelationTypeLabels] || relType;
+                            return (
+                              <div key={relType} className="space-y-1">
+                                <div
+                                  className="text-xs font-medium flex items-center gap-1"
+                                  style={{ color: typeColor }}
+                                >
+                                  <span
+                                    className="w-2 h-2 rounded-full flex-shrink-0"
+                                    style={{ backgroundColor: typeColor }}
+                                  />
+                                  {relTypeLabel}
+                                  <span className="text-stone-400 font-normal">
+                                    · {rels.length} 条
+                                  </span>
+                                </div>
+                                {rels.map((relation) => {
+                                  const source = fragments.find((f) => f.id === relation.sourceId);
+                                  const target = fragments.find((f) => f.id === relation.targetId);
+                                  return (
+                                    <div
+                                      key={relation.id}
+                                      className="text-xs flex items-center gap-2 cursor-pointer hover:bg-white p-1 rounded transition-colors"
+                                      onClick={() => handleRelationClick(relation.id)}
+                                    >
+                                      <span
+                                        className="w-2 h-2 rounded-full flex-shrink-0 opacity-50"
+                                        style={{ backgroundColor: typeColor }}
+                                      />
+                                      <span className="text-stone-600">
+                                        {source?.code}—{target?.code}
+                                      </span>
+                                      {relation.notes && (
+                                        <span className="text-stone-400 flex-1 truncate">
+                                          {relation.notes}
+                                        </span>
+                                      )}
+                                      <span
+                                        className="ml-auto font-bold"
+                                        style={{ color: typeColor }}
+                                      >
+                                        {relation.confidence}%
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        (() => {
+                          const evidenceType = group.relations[0]?.type;
+                          const typeColor = evidenceType
+                            ? RelationTypeColors[evidenceType as keyof typeof RelationTypeColors]
+                            : '#78716C';
                           return (
-                            <div
-                              key={relation.id}
-                              className="text-xs flex items-center gap-2 cursor-pointer hover:bg-emerald-50 p-1 rounded transition-colors"
-                              onClick={() => handleRelationClick(relation.id)}
-                            >
-                              <span
-                                className="w-2 h-2 rounded-full flex-shrink-0"
-                                style={{ backgroundColor: typeColor }}
-                              />
-                              <span className="text-stone-600">
-                                {source?.code}—{target?.code}
-                              </span>
-                              <span
-                                className="ml-auto font-bold"
-                                style={{ color: typeColor }}
-                              >
-                                {relation.confidence}%
-                              </span>
+                            <div className="space-y-1 pl-2 border-l-2 border-emerald-300">
+                              {group.relations.map((relation) => {
+                                const source = fragments.find((f) => f.id === relation.sourceId);
+                                const target = fragments.find((f) => f.id === relation.targetId);
+                                return (
+                                  <div
+                                    key={relation.id}
+                                    className="text-xs flex items-center gap-2 cursor-pointer hover:bg-emerald-50 p-1 rounded transition-colors"
+                                    onClick={() => handleRelationClick(relation.id)}
+                                  >
+                                    <span
+                                      className="w-2 h-2 rounded-full flex-shrink-0"
+                                      style={{ backgroundColor: typeColor }}
+                                    />
+                                    <span className="text-stone-600">
+                                      {source?.code}—{target?.code}
+                                    </span>
+                                    {relation.notes && (
+                                      <span className="text-stone-400 flex-1 truncate">
+                                        {relation.notes}
+                                      </span>
+                                    )}
+                                    <span
+                                      className="ml-auto font-bold"
+                                      style={{ color: typeColor }}
+                                    >
+                                      {relation.confidence}%
+                                    </span>
+                                  </div>
+                                );
+                              })}
                             </div>
                           );
-                        })}
-                      </div>
+                        })()
+                      )}
                     </div>
                   );
                 })}

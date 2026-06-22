@@ -1,4 +1,4 @@
-import { Fragment, Relation, AnalysisResult, ConflictGroupType, ConflictRelationGroup } from '@/types';
+import { Fragment, Relation, AnalysisResult, ConflictGroupType, ConflictRelationGroup, MultiEvidenceKind } from '@/types';
 
 const HIGH_CONFIDENCE_THRESHOLD = 80;
 const MIN_GROUPING_CONFIDENCE = 60;
@@ -64,44 +64,55 @@ export function getConflictRelationGroups(
           typeRels.reduce((sum, r) => sum + r.confidence, 0) / typeRels.length
         );
         multiEvidenceGroups.push({
-          id: `multi-${pairKey}-${type}`,
+          id: `multi-same-${pairKey}-${type}`,
           type: ConflictGroupType.MULTI_EVIDENCE,
           fragmentPair,
           relations: typeRels.sort((a, b) => b.confidence - a.confidence),
-          avgConfidence
+          avgConfidence,
+          evidenceKind: MultiEvidenceKind.SAME_TYPE,
+          evidenceTypeCount: 1
         });
       }
     });
 
     const distinctTypes = Array.from(typeMap.keys());
-    const hasOpposingEvidence = distinctTypes.length >= 2;
+    if (distinctTypes.length >= 2) {
+      const avgConfidence = Math.round(
+        pairRels.reduce((sum, r) => sum + r.confidence, 0) / pairRels.length
+      );
+      multiEvidenceGroups.push({
+        id: `multi-cross-${pairKey}`,
+        type: ConflictGroupType.MULTI_EVIDENCE,
+        fragmentPair,
+        relations: [...pairRels].sort((a, b) => b.confidence - a.confidence),
+        avgConfidence,
+        evidenceKind: MultiEvidenceKind.CROSS_TYPE,
+        evidenceTypeCount: distinctTypes.length
+      });
+    }
 
-    if (hasOpposingEvidence) {
-      const confidences = pairRels.map((r) => r.confidence);
-      const maxConfidence = Math.max(...confidences);
-      const minConfidence = Math.min(...confidences);
-      const confidenceSpread = maxConfidence - minConfidence;
+    const confidences = pairRels.map((r) => r.confidence);
+    const maxConfidence = Math.max(...confidences);
+    const minConfidence = Math.min(...confidences);
+    const confidenceSpread = maxConfidence - minConfidence;
 
-      const hasMultipleHighConfidenceDifferentTypes =
-        distinctTypes.filter((t) =>
-          typeMap.get(t)!.some((r) => r.confidence >= HIGH_CONFIDENCE_THRESHOLD)
-        ).length >= 2;
+    const hasHighConfidence = pairRels.some((r) => r.confidence >= HIGH_CONFIDENCE_THRESHOLD);
+    const hasLowConfidenceDoubt = pairRels.some((r) => r.confidence < 50);
 
-      const isTrueConflict =
-        confidenceSpread >= 40 || hasMultipleHighConfidenceDifferentTypes;
+    const isTrueConflict =
+      confidenceSpread >= 40 && hasHighConfidence && hasLowConfidenceDoubt;
 
-      if (isTrueConflict) {
-        const avgConfidence = Math.round(
-          pairRels.reduce((sum, r) => sum + r.confidence, 0) / pairRels.length
-        );
-        trueConflictGroups.push({
-          id: `conflict-${pairKey}`,
-          type: ConflictGroupType.TRUE_CONFLICT,
-          fragmentPair,
-          relations: pairRels.sort((a, b) => b.confidence - a.confidence),
-          avgConfidence
-        });
-      }
+    if (isTrueConflict) {
+      const avgConfidence = Math.round(
+        pairRels.reduce((sum, r) => sum + r.confidence, 0) / pairRels.length
+      );
+      trueConflictGroups.push({
+        id: `conflict-${pairKey}`,
+        type: ConflictGroupType.TRUE_CONFLICT,
+        fragmentPair,
+        relations: [...pairRels].sort((a, b) => b.confidence - a.confidence),
+        avgConfidence
+      });
     }
   });
 

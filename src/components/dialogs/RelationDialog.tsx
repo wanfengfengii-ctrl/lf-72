@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
-import { XCircle } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { XCircle, AlertTriangle, Info, Layers3, GitBranch } from 'lucide-react';
 import Dialog from '@/components/common/Dialog';
 import { useStore } from '@/store/useStore';
 import { RelationType, RelationTypeLabels, RelationTypeColors } from '@/types';
-import { validateAddRelation } from '@/utils/validation';
+import { validateAddRelation, getRelationExistenceHint } from '@/utils/validation';
 
 interface RelationDialogProps {
   isOpen: boolean;
@@ -102,6 +102,20 @@ export default function RelationDialog({
   const sourceFragment = fragments.find((f) => f.id === formData.sourceId);
   const targetFragment = fragments.find((f) => f.id === formData.targetId);
 
+  const existenceHint = useMemo(() => {
+    if (!formData.sourceId || !formData.targetId || formData.sourceId === formData.targetId) {
+      return null;
+    }
+    return getRelationExistenceHint(
+      formData.sourceId,
+      formData.targetId,
+      formData.type,
+      relations,
+      fragments,
+      editRelationId || undefined
+    );
+  }, [formData.sourceId, formData.targetId, formData.type, fragments, relations, editRelationId]);
+
   return (
     <Dialog
       isOpen={isOpen}
@@ -131,6 +145,75 @@ export default function RelationDialog({
           <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600 flex items-center gap-2">
             <XCircle className="w-4 h-4 flex-shrink-0" />
             {error}
+          </div>
+        )}
+
+        {!isEditing && existenceHint && (existenceHint.sameTypeExists || existenceHint.otherTypeExists) && (
+          <div className="space-y-2">
+            {existenceHint.sameTypeExists && (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1 text-xs">
+                    <div className="font-semibold text-amber-800 mb-1 flex items-center gap-1">
+                      <Layers3 className="w-3.5 h-3.5" />
+                      已存在同类型缀合关系
+                    </div>
+                    <div className="text-amber-700 mb-2">
+                      {existenceHint.fragmentCodes?.join(' 与 ') || '该对残片'} 已存在 {existenceHint.sameTypeRelations.length} 条
+                      <span className="font-medium" style={{ color: RelationTypeColors[formData.type] }}>
+                        「{RelationTypeLabels[formData.type]}」
+                      </span>
+                      类型的缀合关系。继续保存将视为<b>「同类型多证据支持」</b>，请确认这是独立研究者/独立方法得出的判断。
+                    </div>
+                    <div className="space-y-1 bg-amber-100/50 rounded p-2">
+                      {existenceHint.sameTypeRelations.map((r) => (
+                        <div key={r.id} className="flex items-center justify-between gap-2 text-amber-700">
+                          <span className="truncate flex-1">
+                            {r.notes || '（无备注）'}
+                          </span>
+                          <span className="font-bold flex-shrink-0">{r.confidence}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {existenceHint.otherTypeExists && (
+              <div className="p-3 bg-teal-50 border border-teal-200 rounded-lg">
+                <div className="flex items-start gap-2">
+                  <Info className="w-4 h-4 text-teal-500 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1 text-xs">
+                    <div className="font-semibold text-teal-800 mb-1 flex items-center gap-1">
+                      <GitBranch className="w-3.5 h-3.5" />
+                      已存在其他依据的缀合关系
+                    </div>
+                    <div className="text-teal-700 mb-2">
+                      {existenceHint.fragmentCodes?.join(' 与 ') || '该对残片'} 已存在 {existenceHint.otherTypeRelations.length} 条其他依据的缀合关系。继续保存将形成<b>「跨依据汇聚」</b>多证据支持，缀合结论将更加可靠。
+                    </div>
+                    <div className="space-y-1 bg-teal-100/50 rounded p-2">
+                      {existenceHint.otherTypeRelations.map((r) => (
+                        <div key={r.id} className="flex items-center justify-between gap-2 text-teal-700">
+                          <span className="flex items-center gap-1.5">
+                            <span
+                              className="w-2 h-2 rounded-full flex-shrink-0"
+                              style={{ backgroundColor: RelationTypeColors[r.type] }}
+                            />
+                            <span className="font-medium">{RelationTypeLabels[r.type]}</span>
+                            <span className="text-teal-600 truncate">
+                              {r.notes || '（无备注）'}
+                            </span>
+                          </span>
+                          <span className="font-bold flex-shrink-0">{r.confidence}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

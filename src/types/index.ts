@@ -65,12 +65,24 @@ export const ConflictGroupTypeLabels: Record<ConflictGroupType, string> = {
   [ConflictGroupType.TRUE_CONFLICT]: '真实冲突'
 };
 
+export enum MultiEvidenceKind {
+  SAME_TYPE = 'same_type',
+  CROSS_TYPE = 'cross_type'
+}
+
+export const MultiEvidenceKindLabels: Record<MultiEvidenceKind, string> = {
+  [MultiEvidenceKind.SAME_TYPE]: '同类型多证据',
+  [MultiEvidenceKind.CROSS_TYPE]: '跨依据汇聚'
+};
+
 export interface ConflictRelationGroup {
   id: string;
   type: ConflictGroupType;
   fragmentPair: [string, string];
   relations: Relation[];
   avgConfidence: number;
+  evidenceKind?: MultiEvidenceKind;
+  evidenceTypeCount?: number;
 }
 
 export interface GroupingValidationDetail {

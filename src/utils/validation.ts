@@ -288,3 +288,52 @@ export function validateAddRelation(
 
   return { valid: true, message: '' };
 }
+
+export interface RelationExistenceHint {
+  sameTypeExists: boolean;
+  sameTypeRelations: Relation[];
+  otherTypeExists: boolean;
+  otherTypeRelations: Relation[];
+  fragmentCodes?: [string, string];
+}
+
+export function getRelationExistenceHint(
+  sourceId: string,
+  targetId: string,
+  type: RelationType,
+  relations: Relation[],
+  fragments?: Fragment[],
+  excludeId?: string
+): RelationExistenceHint {
+  const sameTypeRelations: Relation[] = [];
+  const otherTypeRelations: Relation[] = [];
+
+  relations.forEach((r) => {
+    if (excludeId && r.id === excludeId) return;
+    const samePair =
+      (r.sourceId === sourceId && r.targetId === targetId) ||
+      (r.sourceId === targetId && r.targetId === sourceId);
+    if (!samePair) return;
+
+    if (r.type === type) {
+      sameTypeRelations.push(r);
+    } else {
+      otherTypeRelations.push(r);
+    }
+  });
+
+  let fragmentCodes: [string, string] | undefined;
+  if (fragments) {
+    const s = fragments.find((f) => f.id === sourceId);
+    const t = fragments.find((f) => f.id === targetId);
+    if (s && t) fragmentCodes = [s.code, t.code];
+  }
+
+  return {
+    sameTypeExists: sameTypeRelations.length > 0,
+    sameTypeRelations,
+    otherTypeExists: otherTypeRelations.length > 0,
+    otherTypeRelations,
+    fragmentCodes
+  };
+}
