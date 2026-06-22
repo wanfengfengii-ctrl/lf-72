@@ -1,21 +1,25 @@
 import { useState, useCallback } from 'react';
-import { Menu, X, List, Link, BarChart3, History, Users } from 'lucide-react';
+import { Menu, X, List, Link, BarChart3, History, Users, Image as ImageIcon } from 'lucide-react';
 import GraphCanvas from '@/components/graph/GraphCanvas';
 import FragmentListPanel from '@/components/panels/FragmentListPanel';
 import RelationListPanel from '@/components/panels/RelationListPanel';
 import AnalysisPanel from '@/components/panels/AnalysisPanel';
 import HistoryPanel from '@/components/panels/HistoryPanel';
 import CollaborationPanel from '@/components/panels/CollaborationPanel';
+import EvidencePanel from '@/components/panels/EvidencePanel';
 import FragmentDialog from '@/components/dialogs/FragmentDialog';
 import RelationDialog from '@/components/dialogs/RelationDialog';
 import ReviewDialog from '@/components/dialogs/ReviewDialog';
 import ArbitrationDialog from '@/components/dialogs/ArbitrationDialog';
+import EvidenceUploadDialog from '@/components/dialogs/EvidenceUploadDialog';
+import EvidenceViewerDialog from '@/components/dialogs/EvidenceViewerDialog';
 import { useStore } from '@/store/useStore';
+import { EvidenceAttachment, AttachmentTargetType } from '@/types';
 
-type RightPanelTab = 'relations' | 'analysis' | 'collaboration' | 'history';
+type RightPanelTab = 'relations' | 'analysis' | 'collaboration' | 'history' | 'evidence';
 
 export default function App() {
-  const { selectFragment, selectRelation, deleteFragment, deleteRelation } = useStore();
+  const { selectFragment, selectRelation, deleteFragment, deleteRelation, selectedRelationId, selectedFragmentId } = useStore();
 
   const [leftPanelOpen, setLeftPanelOpen] = useState(true);
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
@@ -35,6 +39,17 @@ export default function App() {
 
   const [arbitrationDialogOpen, setArbitrationDialogOpen] = useState(false);
   const [arbitrationId, setArbitrationId] = useState<string>('');
+
+  const [evidenceUploadDialogOpen, setEvidenceUploadDialogOpen] = useState(false);
+  const [evidenceUploadTargetType, setEvidenceUploadTargetType] = useState<AttachmentTargetType | undefined>();
+  const [evidenceUploadTargetId, setEvidenceUploadTargetId] = useState<string | undefined>();
+
+  const [evidenceViewerDialogOpen, setEvidenceViewerDialogOpen] = useState(false);
+  const [viewerAttachment, setViewerAttachment] = useState<EvidenceAttachment | null>(null);
+  const [viewerCompareLeftId, setViewerCompareLeftId] = useState<string | undefined>();
+  const [viewerCompareRightId, setViewerCompareRightId] = useState<string | undefined>();
+
+  const [compareFirstAttachment, setCompareFirstAttachment] = useState<EvidenceAttachment | null>(null);
 
   const handleAddFragment = useCallback(() => {
     setEditingFragmentId(null);
@@ -94,6 +109,41 @@ export default function App() {
     setArbitrationId(arbId);
     setArbitrationDialogOpen(true);
   }, []);
+
+  const handleOpenUploadEvidence = useCallback(() => {
+    if (selectedRelationId) {
+      setEvidenceUploadTargetType(AttachmentTargetType.RELATION);
+      setEvidenceUploadTargetId(selectedRelationId);
+    } else if (selectedFragmentId) {
+      setEvidenceUploadTargetType(AttachmentTargetType.FRAGMENT);
+      setEvidenceUploadTargetId(selectedFragmentId);
+    } else {
+      setEvidenceUploadTargetType(undefined);
+      setEvidenceUploadTargetId(undefined);
+    }
+    setEvidenceUploadDialogOpen(true);
+  }, [selectedRelationId, selectedFragmentId]);
+
+  const handleViewEvidence = useCallback((attachment: EvidenceAttachment) => {
+    setViewerAttachment(attachment);
+    setViewerCompareLeftId(undefined);
+    setViewerCompareRightId(undefined);
+    setEvidenceViewerDialogOpen(true);
+  }, []);
+
+  const handleStartCompare = useCallback((attachment: EvidenceAttachment) => {
+    if (!compareFirstAttachment) {
+      setCompareFirstAttachment(attachment);
+    } else if (compareFirstAttachment.id === attachment.id) {
+      setCompareFirstAttachment(null);
+    } else {
+      setViewerAttachment(null);
+      setViewerCompareLeftId(compareFirstAttachment.id);
+      setViewerCompareRightId(attachment.id);
+      setCompareFirstAttachment(null);
+      setEvidenceViewerDialogOpen(true);
+    }
+  }, [compareFirstAttachment]);
 
   return (
     <div className="h-screen flex flex-col bg-stone-100">
@@ -186,6 +236,22 @@ export default function App() {
               <History className="w-4 h-4" />
               历史
             </button>
+            <button
+              onClick={() => {
+                setRightPanelOpen(true);
+                setRightTab('evidence');
+              }}
+              className={`
+                px-3 py-1.5 rounded-md text-sm font-medium flex items-center gap-1.5 transition-colors
+                ${rightPanelOpen && rightTab === 'evidence'
+                  ? 'bg-white text-stone-800 shadow-sm'
+                  : 'text-stone-500 hover:text-stone-700'
+                }
+              `}
+            >
+              <ImageIcon className="w-4 h-4" />
+              证据
+            </button>
           </div>
           <button
             onClick={() => setRightPanelOpen(!rightPanelOpen)}
@@ -233,7 +299,20 @@ export default function App() {
             ${rightPanelOpen ? 'w-80' : 'w-0'}
           `}
         >
-          <div className="w-80 h-full flex flex-col">
+          <div className="w-80 h-full flex flex-col relative">
+            {compareFirstAttachment && (
+              <div className="absolute top-2 left-2 right-2 z-20 bg-sky-50 border border-sky-300 rounded-lg px-3 py-2 flex items-center justify-between shadow-sm">
+                <span className="text-xs text-sky-700">
+                  已选：{compareFirstAttachment.title}，请选择第二张图进行比对
+                </span>
+                <button
+                  onClick={() => setCompareFirstAttachment(null)}
+                  className="text-xs text-sky-600 hover:text-sky-800 font-medium"
+                >
+                  取消
+                </button>
+              </div>
+            )}
             {rightTab === 'relations' ? (
               <RelationListPanel
                 onAddRelation={handleAddRelation}
@@ -250,8 +329,22 @@ export default function App() {
                 onOpenReviewDialog={handleOpenReviewDialog}
                 onOpenArbitrationDialog={handleOpenArbitrationDialog}
               />
-            ) : (
+            ) : rightTab === 'history' ? (
               <HistoryPanel />
+            ) : (
+              <EvidencePanel
+                onViewEvidence={handleViewEvidence}
+                onUploadEvidence={handleOpenUploadEvidence}
+                onStartCompare={handleStartCompare}
+                targetType={
+                  selectedRelationId
+                    ? AttachmentTargetType.RELATION
+                    : selectedFragmentId
+                      ? AttachmentTargetType.FRAGMENT
+                      : undefined
+                }
+                targetId={selectedRelationId || selectedFragmentId || undefined}
+              />
             )}
           </div>
         </aside>
@@ -285,6 +378,30 @@ export default function App() {
         isOpen={arbitrationDialogOpen}
         onClose={() => setArbitrationDialogOpen(false)}
         arbitrationId={arbitrationId}
+      />
+
+      <EvidenceUploadDialog
+        isOpen={evidenceUploadDialogOpen}
+        onClose={() => {
+          setEvidenceUploadDialogOpen(false);
+          setEvidenceUploadTargetType(undefined);
+          setEvidenceUploadTargetId(undefined);
+        }}
+        defaultTargetType={evidenceUploadTargetType}
+        defaultTargetId={evidenceUploadTargetId}
+      />
+
+      <EvidenceViewerDialog
+        isOpen={evidenceViewerDialogOpen}
+        onClose={() => {
+          setEvidenceViewerDialogOpen(false);
+          setViewerAttachment(null);
+          setViewerCompareLeftId(undefined);
+          setViewerCompareRightId(undefined);
+        }}
+        attachment={viewerAttachment}
+        compareLeftId={viewerCompareLeftId}
+        compareRightId={viewerCompareRightId}
       />
     </div>
   );

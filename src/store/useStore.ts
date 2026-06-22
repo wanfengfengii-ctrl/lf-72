@@ -21,11 +21,25 @@ import {
   ArbitrationOutcome,
   ReviewSummary,
   ReviewTimelineEvent,
-  ReviewEvidenceType
+  ReviewEvidenceType,
+  EvidenceAttachment,
+  EvidenceAttachmentType,
+  AttachmentTargetType,
+  AnnotationMarker,
+  CompareSession,
+  EvidenceFilter
 } from '@/types';
 import { validateFragmentCode, validateAddRelation, validateGrouping, validateGroupingDetailed } from '@/utils/validation';
 import { analyzeNetwork } from '@/utils/analysis';
-import { mockFragments, mockRelations, mockResearchers, mockReviews, mockArbitrations } from '@/data/mockData';
+import {
+  mockFragments,
+  mockRelations,
+  mockResearchers,
+  mockReviews,
+  mockArbitrations,
+  mockEvidenceAttachments,
+  mockCompareSessions
+} from '@/data/mockData';
 
 const generateId = () => Math.random().toString(36).substring(2, 11);
 
@@ -168,6 +182,60 @@ interface AppState {
 
   getReviewTimeline: () => ReviewTimelineEvent[];
   getReviewTimelineForRelation: (relationId: string) => ReviewTimelineEvent[];
+
+  evidenceAttachments: EvidenceAttachment[];
+  compareSessions: CompareSession[];
+  evidenceFilter: EvidenceFilter;
+
+  addEvidenceAttachment: (
+    data: Omit<EvidenceAttachment, 'id' | 'createdAt' | 'updatedAt' | 'markers' | 'uploadedBy' | 'uploadedByResearcherId'>,
+    note?: string
+  ) => { success: boolean; message: string; attachmentId?: string };
+  updateEvidenceAttachment: (
+    id: string,
+    data: Partial<Pick<EvidenceAttachment, 'title' | 'description' | 'type' | 'fragmentReferenceIds'>>,
+    note?: string
+  ) => { success: boolean; message: string };
+  deleteEvidenceAttachment: (id: string, note?: string) => { success: boolean; message: string };
+  getEvidenceForTarget: (targetType: AttachmentTargetType, targetId: string) => EvidenceAttachment[];
+  getEvidenceForRelation: (relationId: string) => EvidenceAttachment[];
+  getEvidenceForFragment: (fragmentId: string) => EvidenceAttachment[];
+  getEvidenceForReview: (reviewId: string) => EvidenceAttachment[];
+  getAllEvidence: () => EvidenceAttachment[];
+  setEvidenceFilter: (filter: Partial<EvidenceFilter>) => void;
+  clearEvidenceFilter: () => void;
+  getFilteredEvidence: () => EvidenceAttachment[];
+
+  addMarkerToAttachment: (
+    attachmentId: string,
+    marker: Omit<AnnotationMarker, 'id'>,
+    note?: string
+  ) => { success: boolean; message: string; markerId?: string };
+  updateMarker: (
+    attachmentId: string,
+    markerId: string,
+    data: Partial<Omit<AnnotationMarker, 'id'>>
+  ) => { success: boolean; message: string };
+  deleteMarker: (attachmentId: string, markerId: string) => { success: boolean; message: string };
+
+  createCompareSession: (
+    data: Omit<CompareSession, 'id' | 'createdAt' | 'createdBy' | 'markers'>,
+    note?: string
+  ) => { success: boolean; message: string; sessionId?: string };
+  deleteCompareSession: (sessionId: string) => { success: boolean; message: string };
+  getCompareSessionsForTarget: (targetId?: string) => CompareSession[];
+  addMarkerToCompareSession: (
+    sessionId: string,
+    marker: Omit<AnnotationMarker, 'id'>
+  ) => { success: boolean; message: string; markerId?: string };
+  updateCompareSessionMarker: (
+    sessionId: string,
+    markerId: string,
+    data: Partial<Omit<AnnotationMarker, 'id'>>
+  ) => { success: boolean; message: string };
+  deleteCompareSessionMarker: (sessionId: string, markerId: string) => { success: boolean; message: string };
+  toggleCompareSync: (sessionId: string, syncType: 'zoom' | 'pan') => void;
+  updateCompareSessionNotes: (sessionId: string, notes: string) => void;
 }
 
 export const useStore = create<AppState>()(
@@ -219,6 +287,10 @@ export const useStore = create<AppState>()(
         currentResearcherId: 'researcher-001',
         reviews: JSON.parse(JSON.stringify(mockReviews)),
         arbitrations: JSON.parse(JSON.stringify(mockArbitrations)),
+
+        evidenceAttachments: JSON.parse(JSON.stringify(mockEvidenceAttachments)),
+        compareSessions: JSON.parse(JSON.stringify(mockCompareSessions)),
+        evidenceFilter: {},
 
         addFragment: (data, note) => {
           const { fragments, recordOperation } = get();
@@ -1062,7 +1134,7 @@ export const useStore = create<AppState>()(
         },
 
         getReviewTimeline: () => {
-          const { reviews, arbitrations, relations, researchers, history } = get();
+          const { reviews, arbitrations, relations, researchers, history, evidenceAttachments, fragments } = get();
           const events: ReviewTimelineEvent[] = [];
           for (const review of reviews) {
             const reviewer = researchers.find((r) => r.id === review.reviewerId);
@@ -1146,6 +1218,59 @@ export const useStore = create<AppState>()(
               }
             }
           }
+          for (const evidence of evidenceAttachments) {
+            if (evidence.targetType === AttachmentTargetType.RELATION) {
+              const rel = relations.find((r) => r.id === evidence.targetId);
+              if (rel) {
+                events.push({
+                  id: `timeline-evidence-${evidence.id}`,
+                  type: 'evidence',
+                  timestamp: evidence.createdAt,
+                  relationId: rel.id,
+                  fragmentPair: [rel.sourceId, rel.targetId] as [string, string],
+                  researcherId: evidence.uploadedByResearcherId,
+                  researcherName: evidence.uploadedBy,
+                  description: `${evidence.uploadedBy} 上传证据：${evidence.title}`,
+                  details: {
+                    evidenceTitle: evidence.title,
+                    evidenceType: evidence.type,
+                    markerCount: evidence.markers.length
+                  }
+                });
+              }
+            }
+          }
+          for (const record of history) {
+            if (record.type === OperationType.EVIDENCE_MARKER_ADD || record.type === OperationType.EVIDENCE_COMPARE) {
+              const relationTarget = record.targets.find((t) => t.type === 'relation');
+              const fragTargets = record.targets.filter((t) => t.type === 'fragment');
+              let relationId = relationTarget?.id || '';
+              let fragPair: [string, string] = ['', ''];
+              if (fragTargets.length >= 2) {
+                fragPair = [fragTargets[0].id!, fragTargets[1].id!] as [string, string];
+              } else if (relationTarget) {
+                const rel = relations.find((r) => r.id === relationTarget.id);
+                if (rel) {
+                  fragPair = [rel.sourceId, rel.targetId];
+                }
+              }
+              if (relationId) {
+                events.push({
+                  id: `timeline-evidence-op-${record.id}`,
+                  type: 'evidence',
+                  timestamp: record.timestamp,
+                  relationId,
+                  fragmentPair: fragPair,
+                  researcherName: record.operator,
+                  description: record.description,
+                  details: {
+                    operationType: record.type,
+                    changes: record.changes
+                  }
+                });
+              }
+            }
+          }
           return events.sort((a, b) =>
             new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
           );
@@ -1153,6 +1278,331 @@ export const useStore = create<AppState>()(
 
         getReviewTimelineForRelation: (relationId) => {
           return get().getReviewTimeline().filter((e) => e.relationId === relationId);
+        },
+
+        addEvidenceAttachment: (data, note) => {
+          const { evidenceAttachments, researchers, currentResearcherId, recordOperation, relations, fragments } = get();
+          const researcher = researchers.find((r) => r.id === currentResearcherId);
+
+          const now = new Date().toISOString();
+          const newAttachment: EvidenceAttachment = {
+            ...data,
+            id: `evid-${generateId()}`,
+            markers: [],
+            uploadedBy: researcher?.name || '研究人员',
+            uploadedByResearcherId: currentResearcherId,
+            createdAt: now,
+            updatedAt: now
+          };
+
+          let targetDescription = '';
+          const targets: OperationTarget[] = [];
+          if (data.targetType === AttachmentTargetType.RELATION) {
+            const rel = relations.find((r) => r.id === data.targetId);
+            if (rel) {
+              const sf = fragments.find((f) => f.id === rel.sourceId);
+              const tf = fragments.find((f) => f.id === rel.targetId);
+              targetDescription = `缀合关系 [${sf?.code || ''} ↔ ${tf?.code || ''}]`;
+              targets.push({ type: 'relation', id: rel.id });
+            }
+          } else if (data.targetType === AttachmentTargetType.FRAGMENT) {
+            const frag = fragments.find((f) => f.id === data.targetId);
+            if (frag) {
+              targetDescription = `残片 [${frag.code}]`;
+              targets.push({ type: 'fragment', id: frag.id, code: frag.code, name: frag.name });
+            }
+          } else {
+            targetDescription = `评议 ${data.targetId}`;
+            targets.push({ type: 'relation', id: data.targetId });
+          }
+
+          const changes: FieldChange[] = [
+            { field: 'type', newValue: data.type, label: '证据类型' },
+            { field: 'title', newValue: data.title, label: '附件标题' },
+            { field: 'fileName', newValue: data.fileName, label: '文件名' }
+          ];
+          const description = `为${targetDescription}上传证据附件：${data.title}`;
+
+          set({ evidenceAttachments: [...evidenceAttachments, newAttachment] });
+          recordOperation(OperationType.EVIDENCE_ADD, targets, changes, description, note);
+          return { success: true, message: '证据附件上传成功', attachmentId: newAttachment.id };
+        },
+
+        updateEvidenceAttachment: (id, data, note) => {
+          const { evidenceAttachments, recordOperation } = get();
+          const existing = evidenceAttachments.find((e) => e.id === id);
+          if (!existing) {
+            return { success: false, message: '证据附件不存在' };
+          }
+          const updated: EvidenceAttachment = { ...existing, ...data, updatedAt: new Date().toISOString() };
+          const changes: FieldChange[] = [];
+          if (data.title !== undefined && data.title !== existing.title) {
+            changes.push({ field: 'title', oldValue: existing.title, newValue: data.title, label: '附件标题' });
+          }
+          if (data.description !== undefined && data.description !== existing.description) {
+            changes.push({ field: 'description', oldValue: existing.description, newValue: data.description, label: '描述' });
+          }
+          if (data.type !== undefined && data.type !== existing.type) {
+            changes.push({ field: 'type', oldValue: existing.type, newValue: data.type, label: '证据类型' });
+          }
+          if (changes.length === 0) {
+            return { success: true, message: '无变更内容' };
+          }
+
+          const targets: OperationTarget[] = [{ type: existing.targetType, id: existing.targetId }];
+          const description = `更新证据附件 [${existing.title}]：${changes.map((c) => c.label).join(', ')}`;
+
+          set({
+            evidenceAttachments: evidenceAttachments.map((e) => (e.id === id ? updated : e))
+          });
+          recordOperation(OperationType.EVIDENCE_UPDATE, targets, changes, description, note);
+          return { success: true, message: '证据附件更新成功' };
+        },
+
+        deleteEvidenceAttachment: (id, note) => {
+          const { evidenceAttachments, recordOperation } = get();
+          const existing = evidenceAttachments.find((e) => e.id === id);
+          if (!existing) {
+            return { success: false, message: '证据附件不存在' };
+          }
+
+          const targets: OperationTarget[] = [{ type: existing.targetType, id: existing.targetId }];
+          const changes: FieldChange[] = [
+            { field: 'title', oldValue: existing.title, label: '附件标题' },
+            { field: 'fileName', oldValue: existing.fileName, label: '文件名' }
+          ];
+          const description = `删除证据附件：${existing.title}`;
+
+          set({ evidenceAttachments: evidenceAttachments.filter((e) => e.id !== id) });
+          recordOperation(OperationType.EVIDENCE_DELETE, targets, changes, description, note);
+          return { success: true, message: '证据附件已删除' };
+        },
+
+        getEvidenceForTarget: (targetType, targetId) => {
+          return get().evidenceAttachments.filter((e) => e.targetType === targetType && e.targetId === targetId);
+        },
+
+        getEvidenceForRelation: (relationId) => {
+          return get().evidenceAttachments.filter((e) =>
+            (e.targetType === AttachmentTargetType.RELATION && e.targetId === relationId) ||
+            (e.fragmentReferenceIds && e.fragmentReferenceIds.length > 0)
+          ).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        },
+
+        getEvidenceForFragment: (fragmentId) => {
+          return get().evidenceAttachments.filter((e) =>
+            (e.targetType === AttachmentTargetType.FRAGMENT && e.targetId === fragmentId) ||
+            (e.fragmentReferenceIds && e.fragmentReferenceIds.includes(fragmentId))
+          ).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        },
+
+        getEvidenceForReview: (reviewId) => {
+          return get().evidenceAttachments.filter((e) => e.targetType === AttachmentTargetType.REVIEW && e.targetId === reviewId);
+        },
+
+        getAllEvidence: () => {
+          return [...get().evidenceAttachments].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        },
+
+        setEvidenceFilter: (filter) => {
+          set({ evidenceFilter: { ...get().evidenceFilter, ...filter } });
+        },
+
+        clearEvidenceFilter: () => {
+          set({ evidenceFilter: {} });
+        },
+
+        getFilteredEvidence: () => {
+          const { evidenceAttachments, evidenceFilter } = get();
+          return evidenceAttachments.filter((e) => {
+            if (evidenceFilter.targetType && e.targetType !== evidenceFilter.targetType) return false;
+            if (evidenceFilter.targetId && e.targetId !== evidenceFilter.targetId) return false;
+            if (evidenceFilter.attachmentTypes && evidenceFilter.attachmentTypes.length > 0) {
+              if (!evidenceFilter.attachmentTypes.includes(e.type)) return false;
+            }
+            if (evidenceFilter.uploadedBy && !e.uploadedBy.includes(evidenceFilter.uploadedBy)) return false;
+            if (evidenceFilter.dateFrom && e.createdAt < evidenceFilter.dateFrom) return false;
+            if (evidenceFilter.dateTo && e.createdAt > evidenceFilter.dateTo) return false;
+            return true;
+          }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        },
+
+        addMarkerToAttachment: (attachmentId, marker, note) => {
+          const { evidenceAttachments, recordOperation } = get();
+          const existing = evidenceAttachments.find((e) => e.id === attachmentId);
+          if (!existing) {
+            return { success: false, message: '证据附件不存在' };
+          }
+          const newMarker: AnnotationMarker = { ...marker, id: `mk-${generateId()}` };
+          const updated: EvidenceAttachment = {
+            ...existing,
+            markers: [...existing.markers, newMarker],
+            updatedAt: new Date().toISOString()
+          };
+
+          const targets: OperationTarget[] = [{ type: existing.targetType, id: existing.targetId }];
+          const changes: FieldChange[] = [
+            { field: 'marker', newValue: newMarker.label, label: '标注区域' }
+          ];
+          const description = `在证据附件 [${existing.title}] 上添加标注：${newMarker.label}`;
+
+          set({
+            evidenceAttachments: evidenceAttachments.map((e) => (e.id === attachmentId ? updated : e))
+          });
+          recordOperation(OperationType.EVIDENCE_MARKER_ADD, targets, changes, description, note);
+          return { success: true, message: '标注添加成功', markerId: newMarker.id };
+        },
+
+        updateMarker: (attachmentId, markerId, data) => {
+          const { evidenceAttachments } = get();
+          const existing = evidenceAttachments.find((e) => e.id === attachmentId);
+          if (!existing) {
+            return { success: false, message: '证据附件不存在' };
+          }
+          const updatedMarkers = existing.markers.map((m) =>
+            m.id === markerId ? { ...m, ...data } : m
+          );
+          const updated: EvidenceAttachment = {
+            ...existing,
+            markers: updatedMarkers,
+            updatedAt: new Date().toISOString()
+          };
+          set({
+            evidenceAttachments: evidenceAttachments.map((e) => (e.id === attachmentId ? updated : e))
+          });
+          return { success: true, message: '标注更新成功' };
+        },
+
+        deleteMarker: (attachmentId, markerId) => {
+          const { evidenceAttachments } = get();
+          const existing = evidenceAttachments.find((e) => e.id === attachmentId);
+          if (!existing) {
+            return { success: false, message: '证据附件不存在' };
+          }
+          const updated: EvidenceAttachment = {
+            ...existing,
+            markers: existing.markers.filter((m) => m.id !== markerId),
+            updatedAt: new Date().toISOString()
+          };
+          set({
+            evidenceAttachments: evidenceAttachments.map((e) => (e.id === attachmentId ? updated : e))
+          });
+          return { success: true, message: '标注已删除' };
+        },
+
+        createCompareSession: (data, note) => {
+          const { compareSessions, evidenceAttachments, researchers, currentResearcherId, recordOperation } = get();
+          const researcher = researchers.find((r) => r.id === currentResearcherId);
+          const leftEvid = evidenceAttachments.find((e) => e.id === data.leftAttachmentId);
+          const rightEvid = evidenceAttachments.find((e) => e.id === data.rightAttachmentId);
+
+          const now = new Date().toISOString();
+          const newSession: CompareSession = {
+            ...data,
+            id: `sess-${generateId()}`,
+            markers: [],
+            createdBy: researcher?.name || '研究人员',
+            createdAt: now
+          };
+
+          const targets: OperationTarget[] = [];
+          if (leftEvid) targets.push({ type: leftEvid.targetType, id: leftEvid.targetId });
+          if (rightEvid && rightEvid.targetId !== leftEvid?.targetId) {
+            targets.push({ type: rightEvid.targetType, id: rightEvid.targetId });
+          }
+          const changes: FieldChange[] = [
+            { field: 'leftAttachment', newValue: leftEvid?.title || data.leftAttachmentId, label: '左图' },
+            { field: 'rightAttachment', newValue: rightEvid?.title || data.rightAttachmentId, label: '右图' }
+          ];
+          const description = `创建比对会话：${data.title}`;
+
+          set({ compareSessions: [...compareSessions, newSession] });
+          recordOperation(OperationType.EVIDENCE_COMPARE, targets, changes, description, note);
+          return { success: true, message: '比对会话创建成功', sessionId: newSession.id };
+        },
+
+        deleteCompareSession: (sessionId) => {
+          const { compareSessions } = get();
+          set({ compareSessions: compareSessions.filter((s) => s.id !== sessionId) });
+          return { success: true, message: '比对会话已删除' };
+        },
+
+        getCompareSessionsForTarget: (targetId) => {
+          const { compareSessions, evidenceAttachments } = get();
+          if (!targetId) {
+            return [...compareSessions].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          }
+          return compareSessions.filter((s) => {
+            const left = evidenceAttachments.find((e) => e.id === s.leftAttachmentId);
+            const right = evidenceAttachments.find((e) => e.id === s.rightAttachmentId);
+            return left?.targetId === targetId || right?.targetId === targetId;
+          }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        },
+
+        addMarkerToCompareSession: (sessionId, marker) => {
+          const { compareSessions } = get();
+          const existing = compareSessions.find((s) => s.id === sessionId);
+          if (!existing) {
+            return { success: false, message: '比对会话不存在' };
+          }
+          const newMarker: AnnotationMarker = { ...marker, id: `sess-mk-${generateId()}` };
+          set({
+            compareSessions: compareSessions.map((s) =>
+              s.id === sessionId ? { ...s, markers: [...s.markers, newMarker] } : s
+            )
+          });
+          return { success: true, message: '标注添加成功', markerId: newMarker.id };
+        },
+
+        updateCompareSessionMarker: (sessionId, markerId, data) => {
+          const { compareSessions } = get();
+          set({
+            compareSessions: compareSessions.map((s) =>
+              s.id === sessionId
+                ? {
+                    ...s,
+                    markers: s.markers.map((m) => (m.id === markerId ? { ...m, ...data } : m))
+                  }
+                : s
+            )
+          });
+          return { success: true, message: '标注更新成功' };
+        },
+
+        deleteCompareSessionMarker: (sessionId, markerId) => {
+          const { compareSessions } = get();
+          set({
+            compareSessions: compareSessions.map((s) =>
+              s.id === sessionId
+                ? { ...s, markers: s.markers.filter((m) => m.id !== markerId) }
+                : s
+            )
+          });
+          return { success: true, message: '标注已删除' };
+        },
+
+        toggleCompareSync: (sessionId, syncType) => {
+          const { compareSessions } = get();
+          set({
+            compareSessions: compareSessions.map((s) =>
+              s.id === sessionId
+                ? {
+                    ...s,
+                    syncZoom: syncType === 'zoom' ? !s.syncZoom : s.syncZoom,
+                    syncPan: syncType === 'pan' ? !s.syncPan : s.syncPan
+                  }
+                : s
+            )
+          });
+        },
+
+        updateCompareSessionNotes: (sessionId, notes) => {
+          const { compareSessions } = get();
+          set({
+            compareSessions: compareSessions.map((s) =>
+              s.id === sessionId ? { ...s, notes } : s
+            )
+          });
         }
       };
     },
@@ -1168,7 +1618,10 @@ export const useStore = create<AppState>()(
         reviews: state.reviews,
         arbitrations: state.arbitrations,
         researchers: state.researchers,
-        currentResearcherId: state.currentResearcherId
+        currentResearcherId: state.currentResearcherId,
+        evidenceAttachments: state.evidenceAttachments,
+        compareSessions: state.compareSessions,
+        evidenceFilter: state.evidenceFilter
       })
     }
   )

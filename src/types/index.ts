@@ -137,7 +137,12 @@ export enum OperationType {
   RELATION_CONFIDENCE_CHANGE = 'relation_confidence_change',
   NOTES_UPDATE = 'notes_update',
   BATCH_OPERATION = 'batch_operation',
-  VERSION_RESTORE = 'version_restore'
+  VERSION_RESTORE = 'version_restore',
+  EVIDENCE_ADD = 'evidence_add',
+  EVIDENCE_UPDATE = 'evidence_update',
+  EVIDENCE_DELETE = 'evidence_delete',
+  EVIDENCE_MARKER_ADD = 'evidence_marker_add',
+  EVIDENCE_COMPARE = 'evidence_compare'
 }
 
 export const OperationTypeLabels: Record<OperationType, string> = {
@@ -151,7 +156,12 @@ export const OperationTypeLabels: Record<OperationType, string> = {
   [OperationType.RELATION_CONFIDENCE_CHANGE]: '可信度调整',
   [OperationType.NOTES_UPDATE]: '备注补充',
   [OperationType.BATCH_OPERATION]: '批量操作',
-  [OperationType.VERSION_RESTORE]: '版本恢复'
+  [OperationType.VERSION_RESTORE]: '版本恢复',
+  [OperationType.EVIDENCE_ADD]: '新增证据附件',
+  [OperationType.EVIDENCE_UPDATE]: '更新证据附件',
+  [OperationType.EVIDENCE_DELETE]: '删除证据附件',
+  [OperationType.EVIDENCE_MARKER_ADD]: '添加比对标注',
+  [OperationType.EVIDENCE_COMPARE]: '创建比对会话'
 };
 
 export const OperationTypeColors: Record<OperationType, string> = {
@@ -165,7 +175,12 @@ export const OperationTypeColors: Record<OperationType, string> = {
   [OperationType.RELATION_CONFIDENCE_CHANGE]: '#F59E0B',
   [OperationType.NOTES_UPDATE]: '#6366F1',
   [OperationType.BATCH_OPERATION]: '#EC4899',
-  [OperationType.VERSION_RESTORE]: '#14B8A6'
+  [OperationType.VERSION_RESTORE]: '#14B8A6',
+  [OperationType.EVIDENCE_ADD]: '#0EA5E9',
+  [OperationType.EVIDENCE_UPDATE]: '#0284C7',
+  [OperationType.EVIDENCE_DELETE]: '#DC2626',
+  [OperationType.EVIDENCE_MARKER_ADD]: '#059669',
+  [OperationType.EVIDENCE_COMPARE]: '#7C3AED'
 };
 
 export interface FieldChange {
@@ -176,7 +191,7 @@ export interface FieldChange {
 }
 
 export interface OperationTarget {
-  type: 'fragment' | 'relation' | 'system';
+  type: 'fragment' | 'relation' | 'review' | 'evidence' | 'system';
   id?: string;
   code?: string;
   name?: string;
@@ -359,7 +374,7 @@ export interface ReviewSummary {
 
 export interface ReviewTimelineEvent {
   id: string;
-  type: 'review' | 'arbitration' | 'relation_change';
+  type: 'review' | 'arbitration' | 'relation_change' | 'evidence';
   timestamp: string;
   relationId: string;
   fragmentPair: [string, string];
@@ -370,6 +385,98 @@ export interface ReviewTimelineEvent {
     supportCount?: number;
     opposeCount?: number;
     finalConfidence?: number;
+    evidenceTitle?: string;
+    evidenceType?: EvidenceAttachmentType;
+    markerLabel?: string;
+    compareTitle?: string;
     [key: string]: unknown;
   };
+}
+
+export enum EvidenceAttachmentType {
+  HD_IMAGE = 'hd_image',
+  RUBBING = 'rubbing',
+  MODEL_3D_SCREENSHOT = 'model_3d_screenshot',
+  COMPARISON_MARKUP = 'comparison_markup',
+  OTHER = 'other'
+}
+
+export const EvidenceAttachmentTypeLabels: Record<EvidenceAttachmentType, string> = {
+  [EvidenceAttachmentType.HD_IMAGE]: '高清图片',
+  [EvidenceAttachmentType.RUBBING]: '拓片',
+  [EvidenceAttachmentType.MODEL_3D_SCREENSHOT]: '3D模型截图',
+  [EvidenceAttachmentType.COMPARISON_MARKUP]: '比对标注图',
+  [EvidenceAttachmentType.OTHER]: '其他'
+};
+
+export const EvidenceAttachmentTypeColors: Record<EvidenceAttachmentType, string> = {
+  [EvidenceAttachmentType.HD_IMAGE]: '#2563EB',
+  [EvidenceAttachmentType.RUBBING]: '#92400E',
+  [EvidenceAttachmentType.MODEL_3D_SCREENSHOT]: '#7C3AED',
+  [EvidenceAttachmentType.COMPARISON_MARKUP]: '#059669',
+  [EvidenceAttachmentType.OTHER]: '#6B7280'
+};
+
+export enum AttachmentTargetType {
+  RELATION = 'relation',
+  REVIEW = 'review',
+  FRAGMENT = 'fragment'
+}
+
+export interface AnnotationMarker {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  label: string;
+  color: string;
+  description?: string;
+  linkedMarkerId?: string;
+}
+
+export interface EvidenceAttachment {
+  id: string;
+  targetType: AttachmentTargetType;
+  targetId: string;
+  type: EvidenceAttachmentType;
+  title: string;
+  description: string;
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
+  url: string;
+  thumbnailUrl?: string;
+  width?: number;
+  height?: number;
+  markers: AnnotationMarker[];
+  uploadedBy: string;
+  uploadedByResearcherId?: string;
+  createdAt: string;
+  updatedAt: string;
+  isComparison?: boolean;
+  pairedAttachmentId?: string;
+  fragmentReferenceIds?: string[];
+}
+
+export interface CompareSession {
+  id: string;
+  title: string;
+  leftAttachmentId: string;
+  rightAttachmentId: string;
+  markers: AnnotationMarker[];
+  syncZoom: boolean;
+  syncPan: boolean;
+  createdBy: string;
+  createdAt: string;
+  notes?: string;
+}
+
+export interface EvidenceFilter {
+  targetType?: AttachmentTargetType;
+  targetId?: string;
+  attachmentTypes?: EvidenceAttachmentType[];
+  uploadedBy?: string;
+  dateFrom?: string;
+  dateTo?: string;
 }

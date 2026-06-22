@@ -8,7 +8,11 @@ import {
   ReviewEvidenceType,
   Arbitration,
   ArbitrationStatus,
-  ArbitrationOutcome
+  ArbitrationOutcome,
+  EvidenceAttachment,
+  EvidenceAttachmentType,
+  AttachmentTargetType,
+  CompareSession
 } from '@/types';
 
 export const mockResearchers: Researcher[] = [
@@ -371,5 +375,230 @@ export const mockRelations: Relation[] = [
     notes: '李教授独立研究：文字连续度极高，文例通顺，应为同一版卜辞',
     createdAt: '2024-01-19T09:30:00Z',
     updatedAt: '2024-01-19T09:30:00Z'
+  }
+];
+
+const generateId = () => Math.random().toString(36).substring(2, 11);
+
+const placeholderImg = (seed: string, w = 800, h = 600) =>
+  `https://picsum.photos/seed/oracle-${seed}/${w}/${h}`;
+
+export const mockEvidenceAttachments: EvidenceAttachment[] = [
+  {
+    id: 'evid-001',
+    targetType: AttachmentTargetType.RELATION,
+    targetId: 'rel-001',
+    type: EvidenceAttachmentType.HD_IMAGE,
+    title: '甲001高清照片',
+    description: '甲001龟甲左侧残片高清彩色照片，分辨率600dpi，展示正面文字与边缘形态',
+    fileName: '甲001_正面_HD.jpg',
+    fileSize: 4523567,
+    mimeType: 'image/jpeg',
+    url: placeholderImg('frag001-hd', 1200, 900),
+    thumbnailUrl: placeholderImg('frag001-thumb', 300, 225),
+    width: 1200,
+    height: 900,
+    markers: [
+      { id: 'mk-001', x: 120, y: 80, width: 180, height: 100, label: '贞字区域', color: '#EF4444', description: '贞字书写特征明显，与甲002同笔锋' },
+      { id: 'mk-002', x: 450, y: 300, width: 150, height: 120, label: '边缘齿痕A', color: '#3B82F6', description: '边缘齿状磨损痕迹' }
+    ],
+    uploadedBy: '李明远',
+    uploadedByResearcherId: 'researcher-001',
+    createdAt: '2024-01-16T10:30:00Z',
+    updatedAt: '2024-01-16T11:15:00Z',
+    fragmentReferenceIds: ['frag-001']
+  },
+  {
+    id: 'evid-002',
+    targetType: AttachmentTargetType.RELATION,
+    targetId: 'rel-001',
+    type: EvidenceAttachmentType.HD_IMAGE,
+    title: '甲002高清照片',
+    description: '甲002龟甲右侧残片高清彩色照片，与甲001疑似缀合的对应部分',
+    fileName: '甲002_正面_HD.jpg',
+    fileSize: 4892134,
+    mimeType: 'image/jpeg',
+    url: placeholderImg('frag002-hd', 1200, 900),
+    thumbnailUrl: placeholderImg('frag002-thumb', 300, 225),
+    width: 1200,
+    height: 900,
+    markers: [
+      { id: 'mk-003', x: 100, y: 90, width: 160, height: 110, label: '卜字区域', color: '#EF4444', description: '卜字笔锋与甲001一致' },
+      { id: 'mk-004', x: 420, y: 280, width: 155, height: 125, label: '边缘齿痕B', color: '#3B82F6', description: '与甲001齿痕A完全对应' }
+    ],
+    uploadedBy: '李明远',
+    uploadedByResearcherId: 'researcher-001',
+    createdAt: '2024-01-16T10:35:00Z',
+    updatedAt: '2024-01-16T11:20:00Z',
+    isComparison: true,
+    pairedAttachmentId: 'evid-001',
+    fragmentReferenceIds: ['frag-002']
+  },
+  {
+    id: 'evid-003',
+    targetType: AttachmentTargetType.RELATION,
+    targetId: 'rel-001',
+    type: EvidenceAttachmentType.RUBBING,
+    title: '甲001与甲002墨拓对比',
+    description: '传统墨拓技法制作的拓片扫描件，展示文字和纹饰的细节对比',
+    fileName: '甲001_甲002_墨拓对比.tif',
+    fileSize: 12456789,
+    mimeType: 'image/tiff',
+    url: placeholderImg('rubbing-compare', 1600, 800),
+    thumbnailUrl: placeholderImg('rubbing-thumb', 300, 150),
+    width: 1600,
+    height: 800,
+    markers: [],
+    uploadedBy: '王博文',
+    uploadedByResearcherId: 'researcher-002',
+    createdAt: '2024-01-16T14:00:00Z',
+    updatedAt: '2024-01-16T14:00:00Z',
+    fragmentReferenceIds: ['frag-001', 'frag-002']
+  },
+  {
+    id: 'evid-004',
+    targetType: AttachmentTargetType.RELATION,
+    targetId: 'rel-001',
+    type: EvidenceAttachmentType.MODEL_3D_SCREENSHOT,
+    title: '3D扫描边缘吻合验证图',
+    description: '基于高精度3D扫描数据的边缘吻合度检测截图，显示两残片边缘的曲面拟合情况',
+    fileName: '3D_边缘拟合_验证.png',
+    fileSize: 3210987,
+    mimeType: 'image/png',
+    url: placeholderImg('3d-model-fit', 1000, 700),
+    thumbnailUrl: placeholderImg('3d-thumb', 300, 210),
+    width: 1000,
+    height: 700,
+    markers: [
+      { id: 'mk-005', x: 350, y: 200, width: 300, height: 200, label: '拟合区域', color: '#10B981', description: '曲面拟合度96.8%，支持缀合' }
+    ],
+    uploadedBy: '王博文',
+    uploadedByResearcherId: 'researcher-002',
+    createdAt: '2024-01-16T15:20:00Z',
+    updatedAt: '2024-01-16T15:45:00Z',
+    fragmentReferenceIds: ['frag-001', 'frag-002']
+  },
+  {
+    id: 'evid-005',
+    targetType: AttachmentTargetType.REVIEW,
+    targetId: 'review-001',
+    type: EvidenceAttachmentType.COMPARISON_MARKUP,
+    title: '文字连续性标注图',
+    description: '对甲001和甲002的文字进行逐字比对标注，展示文字笔顺的连贯性',
+    fileName: '文字连续性_标注图.png',
+    fileSize: 2156734,
+    mimeType: 'image/png',
+    url: placeholderImg('text-continuity-markup', 1400, 700),
+    thumbnailUrl: placeholderImg('text-markup-thumb', 300, 150),
+    width: 1400,
+    height: 700,
+    markers: [
+      { id: 'mk-006', x: 200, y: 150, width: 200, height: 150, label: '贞', color: '#7C3AED', description: '甲001左侧贞字' },
+      { id: 'mk-007', x: 900, y: 150, width: 200, height: 150, label: '卜', color: '#7C3AED', description: '甲002右侧卜字，与贞字构成贞卜组合' }
+    ],
+    uploadedBy: '张静怡',
+    uploadedByResearcherId: 'researcher-003',
+    createdAt: '2024-01-16T16:30:00Z',
+    updatedAt: '2024-01-16T16:30:00Z',
+    fragmentReferenceIds: ['frag-001', 'frag-002']
+  },
+  {
+    id: 'evid-006',
+    targetType: AttachmentTargetType.RELATION,
+    targetId: 'rel-007',
+    type: EvidenceAttachmentType.HD_IMAGE,
+    title: '甲006文字细节高清图',
+    description: '甲006残片的文字区域放大高清照片，用于文字连续性比对',
+    fileName: '甲006_文字细节.jpg',
+    fileSize: 5678234,
+    mimeType: 'image/jpeg',
+    url: placeholderImg('frag006-text', 1200, 800),
+    thumbnailUrl: placeholderImg('frag006-thumb', 300, 200),
+    width: 1200,
+    height: 800,
+    markers: [
+      { id: 'mk-008', x: 300, y: 200, width: 180, height: 140, label: '王曰', color: '#F59E0B', description: '王曰二字，与甲001连读' },
+      { id: 'mk-009', x: 600, y: 350, width: 180, height: 140, label: '亡灾', color: '#F59E0B', description: '亡灾二字，文例完整通顺' }
+    ],
+    uploadedBy: '李明远',
+    uploadedByResearcherId: 'researcher-001',
+    createdAt: '2024-01-19T10:30:00Z',
+    updatedAt: '2024-01-19T10:30:00Z',
+    fragmentReferenceIds: ['frag-006']
+  },
+  {
+    id: 'evid-007',
+    targetType: AttachmentTargetType.FRAGMENT,
+    targetId: 'frag-001',
+    type: EvidenceAttachmentType.RUBBING,
+    title: '甲001背面拓片',
+    description: '甲001残片背面的凿钻痕迹拓片，用于比对背面特征',
+    fileName: '甲001_背面_拓片.jpg',
+    fileSize: 3456123,
+    mimeType: 'image/jpeg',
+    url: placeholderImg('frag001-back', 900, 700),
+    thumbnailUrl: placeholderImg('frag001-back-thumb', 300, 233),
+    width: 900,
+    height: 700,
+    markers: [],
+    uploadedBy: '刘雅琴',
+    uploadedByResearcherId: 'researcher-005',
+    createdAt: '2024-01-18T09:15:00Z',
+    updatedAt: '2024-01-18T09:15:00Z',
+    fragmentReferenceIds: ['frag-001']
+  },
+  {
+    id: 'evid-008',
+    targetType: AttachmentTargetType.RELATION,
+    targetId: 'rel-003',
+    type: EvidenceAttachmentType.COMPARISON_MARKUP,
+    title: '甲004与甲005缀合全景标注',
+    description: '甲004与甲005完全缀合后的全景标注图，标记干支表连续区域',
+    fileName: '甲004_甲005_全景标注.png',
+    fileSize: 6789345,
+    mimeType: 'image/png',
+    url: placeholderImg('frag004-005-full', 1600, 1000),
+    thumbnailUrl: placeholderImg('frag004-005-thumb', 300, 188),
+    width: 1600,
+    height: 1000,
+    markers: [
+      { id: 'mk-010', x: 200, y: 300, width: 500, height: 400, label: '甲004区域', color: '#8B5CF6' },
+      { id: 'mk-011', x: 900, y: 300, width: 500, height: 400, label: '甲005区域', color: '#EC4899' }
+    ],
+    uploadedBy: '陈思远',
+    uploadedByResearcherId: 'researcher-004',
+    createdAt: '2024-01-17T16:00:00Z',
+    updatedAt: '2024-01-17T16:30:00Z',
+    fragmentReferenceIds: ['frag-004', 'frag-005']
+  }
+];
+
+export const mockCompareSessions: CompareSession[] = [
+  {
+    id: 'sess-001',
+    title: '甲001与甲002边缘比对',
+    leftAttachmentId: 'evid-001',
+    rightAttachmentId: 'evid-002',
+    markers: [
+      { id: 'sess-mk-001', x: 450, y: 300, width: 150, height: 120, label: '边缘对应区A', color: '#10B981', linkedMarkerId: 'sess-mk-002' },
+      { id: 'sess-mk-002', x: 420, y: 280, width: 155, height: 125, label: '边缘对应区B', color: '#10B981', linkedMarkerId: 'sess-mk-001' }
+    ],
+    syncZoom: true,
+    syncPan: true,
+    createdBy: '李明远',
+    createdAt: '2024-01-16T11:00:00Z',
+    notes: '边缘齿痕完全吻合，曲面拟合度高，有力支持缀合'
+  },
+  {
+    id: 'sess-002',
+    title: '甲001与甲006文字比对',
+    leftAttachmentId: 'evid-001',
+    rightAttachmentId: 'evid-006',
+    markers: [],
+    syncZoom: true,
+    syncPan: false,
+    createdBy: '李明远',
+    createdAt: '2024-01-19T11:00:00Z',
+    notes: '文字连续度极高，王曰亡灾可通读'
   }
 ];

@@ -9,7 +9,10 @@ import {
   MinusCircle,
   Eye,
   Clock,
-  User
+  User,
+  Upload,
+  Square,
+  GitCompare
 } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import {
@@ -47,7 +50,7 @@ export default function ReviewTimeline() {
     };
   };
 
-  const getEventIcon = (type: string, verdict?: string) => {
+  const getEventIcon = (type: string, verdict?: string, details?: Record<string, unknown>) => {
     if (type === 'review') {
       switch (verdict) {
         case ReviewVerdict.SUPPORT: return ThumbsUp;
@@ -58,6 +61,12 @@ export default function ReviewTimeline() {
       }
     }
     if (type === 'arbitration') return Scale;
+    if (type === 'evidence') {
+      const opType = details?.operationType as string | undefined;
+      if (opType === 'evidence_marker_add') return Square;
+      if (opType === 'evidence_compare') return GitCompare;
+      return Upload;
+    }
     return LinkIcon;
   };
 
@@ -69,6 +78,7 @@ export default function ReviewTimeline() {
       return ArbitrationStatusColors[status as keyof typeof ArbitrationStatusColors] || '#6B7280';
     }
     if (type === 'relation_change') return '#3B82F6';
+    if (type === 'evidence') return '#0EA5E9';
     return '#6B7280';
   };
 
@@ -120,6 +130,37 @@ export default function ReviewTimeline() {
         </span>
       );
     }
+    if (event.type === 'evidence' && event.details) {
+      const markerCount = event.details.markerCount as number | undefined;
+      const evidenceType = event.details.evidenceType as string | undefined;
+      const opType = event.details.operationType as string | undefined;
+      let label = '证据附件';
+      if (opType === 'evidence_marker_add') {
+        label = '新增标注';
+      } else if (opType === 'evidence_compare') {
+        label = '比对会话';
+      } else if (evidenceType) {
+        const typeMap: Record<string, string> = {
+          hd_image: '高清图片',
+          rubbing: '拓片',
+          model_3d_screenshot: '3D截图',
+          comparison_markup: '标注图',
+          other: '其他'
+        };
+        label = typeMap[evidenceType] || '证据附件';
+      }
+      return (
+        <span
+          className="text-[10px] px-1.5 py-0.5 rounded ml-1"
+          style={{
+            backgroundColor: `${getEventColor(event.type)}15`,
+            color: getEventColor(event.type)
+          }}
+        >
+          {label}{markerCount !== undefined && markerCount > 0 ? ` · ${markerCount}标注` : ''}
+        </span>
+      );
+    }
     return null;
   };
 
@@ -141,7 +182,7 @@ export default function ReviewTimeline() {
               const sourceFrag = fragments.find((f) => f.id === event.fragmentPair[0]);
               const targetFrag = fragments.find((f) => f.id === event.fragmentPair[1]);
               const color = getEventColor(event.type, event.details?.verdict as string, event.details?.status as string);
-              const Icon = getEventIcon(event.type, event.details?.verdict as string);
+              const Icon = getEventIcon(event.type, event.details?.verdict as string, event.details as Record<string, unknown>);
 
               const showDate = index === 0 || formatDateTime(timeline[index - 1].timestamp).date !== date;
 
@@ -188,10 +229,12 @@ export default function ReviewTimeline() {
                                       : event.details?.status === ArbitrationStatus.PENDING
                                         ? 'bg-amber-500'
                                         : 'bg-stone-500'
-                                    : 'bg-blue-500'
+                                    : event.type === 'evidence'
+                                      ? 'bg-sky-500'
+                                      : 'bg-blue-500'
                               }`}
                             >
-                              {event.type === 'review' ? '评议' : event.type === 'arbitration' ? '仲裁' : '关系变更'}
+                              {event.type === 'review' ? '评议' : event.type === 'arbitration' ? '仲裁' : event.type === 'evidence' ? '证据' : '关系变更'}
                             </span>
                             <span className="text-[10px] text-stone-500 flex items-center gap-0.5">
                               <Clock className="w-2.5 h-2.5" />

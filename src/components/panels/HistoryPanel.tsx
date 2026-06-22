@@ -22,7 +22,10 @@ import {
   Edit3,
   Tag,
   Star,
-  GitBranch
+  GitBranch,
+  Upload,
+  Image,
+  Square
 } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import {
@@ -72,6 +75,15 @@ const getOperationIcon = (type: OperationType) => {
       return Layers;
     case OperationType.VERSION_RESTORE:
       return RotateCcw;
+    case OperationType.EVIDENCE_ADD:
+    case OperationType.EVIDENCE_UPDATE:
+      return Upload;
+    case OperationType.EVIDENCE_DELETE:
+      return Trash2;
+    case OperationType.EVIDENCE_MARKER_ADD:
+      return Square;
+    case OperationType.EVIDENCE_COMPARE:
+      return GitCompare;
     default:
       return History;
   }
