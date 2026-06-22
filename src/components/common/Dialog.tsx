@@ -1,12 +1,22 @@
 import { ReactNode, useEffect } from 'react';
 import { X } from 'lucide-react';
 
+type DialogSize = 'sm' | 'md' | 'lg' | 'xl';
+
+const sizeClasses: Record<DialogSize, string> = {
+  sm: 'max-w-md',
+  md: 'max-w-lg',
+  lg: 'max-w-2xl',
+  xl: 'max-w-4xl'
+};
+
 interface DialogProps {
   isOpen: boolean;
   onClose: () => void;
   title: string;
   children: ReactNode;
   footer?: ReactNode;
+  size?: DialogSize;
 }
 
 export default function Dialog({
@@ -14,7 +24,8 @@ export default function Dialog({
   onClose,
   title,
   children,
-  footer
+  footer,
+  size = 'md'
 }: DialogProps) {
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -42,7 +53,7 @@ export default function Dialog({
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-200">
+      <div className={`relative bg-white rounded-xl shadow-2xl w-full ${sizeClasses[size]} mx-4 max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-200`}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-stone-200">
           <h2 className="text-lg font-bold text-stone-800">{title}</h2>
           <button

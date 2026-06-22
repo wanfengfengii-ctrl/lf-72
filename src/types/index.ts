@@ -125,3 +125,108 @@ export interface ValidationResult {
   valid: boolean;
   message: string;
 }
+
+export enum OperationType {
+  FRAGMENT_ADD = 'fragment_add',
+  FRAGMENT_UPDATE = 'fragment_update',
+  FRAGMENT_DELETE = 'fragment_delete',
+  FRAGMENT_GROUP_TOGGLE = 'fragment_group_toggle',
+  RELATION_ADD = 'relation_add',
+  RELATION_UPDATE = 'relation_update',
+  RELATION_DELETE = 'relation_delete',
+  RELATION_CONFIDENCE_CHANGE = 'relation_confidence_change',
+  NOTES_UPDATE = 'notes_update',
+  BATCH_OPERATION = 'batch_operation',
+  VERSION_RESTORE = 'version_restore'
+}
+
+export const OperationTypeLabels: Record<OperationType, string> = {
+  [OperationType.FRAGMENT_ADD]: '新增残片',
+  [OperationType.FRAGMENT_UPDATE]: '更新残片',
+  [OperationType.FRAGMENT_DELETE]: '删除残片',
+  [OperationType.FRAGMENT_GROUP_TOGGLE]: '定组状态变更',
+  [OperationType.RELATION_ADD]: '新增缀合关系',
+  [OperationType.RELATION_UPDATE]: '更新缀合关系',
+  [OperationType.RELATION_DELETE]: '删除缀合关系',
+  [OperationType.RELATION_CONFIDENCE_CHANGE]: '可信度调整',
+  [OperationType.NOTES_UPDATE]: '备注补充',
+  [OperationType.BATCH_OPERATION]: '批量操作',
+  [OperationType.VERSION_RESTORE]: '版本恢复'
+};
+
+export const OperationTypeColors: Record<OperationType, string> = {
+  [OperationType.FRAGMENT_ADD]: '#10B981',
+  [OperationType.FRAGMENT_UPDATE]: '#3B82F6',
+  [OperationType.FRAGMENT_DELETE]: '#EF4444',
+  [OperationType.FRAGMENT_GROUP_TOGGLE]: '#8B5CF6',
+  [OperationType.RELATION_ADD]: '#10B981',
+  [OperationType.RELATION_UPDATE]: '#3B82F6',
+  [OperationType.RELATION_DELETE]: '#EF4444',
+  [OperationType.RELATION_CONFIDENCE_CHANGE]: '#F59E0B',
+  [OperationType.NOTES_UPDATE]: '#6366F1',
+  [OperationType.BATCH_OPERATION]: '#EC4899',
+  [OperationType.VERSION_RESTORE]: '#14B8A6'
+};
+
+export interface FieldChange {
+  field: string;
+  oldValue?: unknown;
+  newValue?: unknown;
+  label?: string;
+}
+
+export interface OperationTarget {
+  type: 'fragment' | 'relation' | 'system';
+  id?: string;
+  code?: string;
+  name?: string;
+}
+
+export interface OperationRecord {
+  id: string;
+  version: number;
+  type: OperationType;
+  timestamp: string;
+  operator: string;
+  targets: OperationTarget[];
+  changes: FieldChange[];
+  description: string;
+  note?: string;
+  snapshotId: string;
+}
+
+export interface VersionSnapshot {
+  id: string;
+  version: number;
+  timestamp: string;
+  fragments: Fragment[];
+  relations: Relation[];
+  nodePositions: NodePositionsMap;
+  operationId: string;
+  checksum: string;
+}
+
+export interface VersionDiff {
+  versionA: number;
+  versionB: number;
+  fragmentsAdded: Fragment[];
+  fragmentsRemoved: Fragment[];
+  fragmentsModified: Array<{ old: Fragment; new: Fragment; changes: FieldChange[] }>;
+  relationsAdded: Relation[];
+  relationsRemoved: Relation[];
+  relationsModified: Array<{ old: Relation; new: Relation; changes: FieldChange[] }>;
+  summary: {
+    totalChanges: number;
+    fragmentChanges: number;
+    relationChanges: number;
+  };
+}
+
+export interface HistoryFilter {
+  operationTypes?: OperationType[];
+  targetType?: 'fragment' | 'relation' | 'all';
+  targetId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  operator?: string;
+}

@@ -1,14 +1,15 @@
 import { useState, useCallback } from 'react';
-import { Menu, X, List, Link, BarChart3 } from 'lucide-react';
+import { Menu, X, List, Link, BarChart3, History } from 'lucide-react';
 import GraphCanvas from '@/components/graph/GraphCanvas';
 import FragmentListPanel from '@/components/panels/FragmentListPanel';
 import RelationListPanel from '@/components/panels/RelationListPanel';
 import AnalysisPanel from '@/components/panels/AnalysisPanel';
+import HistoryPanel from '@/components/panels/HistoryPanel';
 import FragmentDialog from '@/components/dialogs/FragmentDialog';
 import RelationDialog from '@/components/dialogs/RelationDialog';
 import { useStore } from '@/store/useStore';
 
-type RightPanelTab = 'relations' | 'analysis';
+type RightPanelTab = 'relations' | 'analysis' | 'history';
 
 export default function App() {
   const { selectFragment, selectRelation, deleteFragment, deleteRelation } = useStore();
@@ -132,6 +133,22 @@ export default function App() {
               <BarChart3 className="w-4 h-4" />
               分析
             </button>
+            <button
+              onClick={() => {
+                setRightPanelOpen(true);
+                setRightTab('history');
+              }}
+              className={`
+                px-3 py-1.5 rounded-md text-sm font-medium flex items-center gap-1.5 transition-colors
+                ${rightPanelOpen && rightTab === 'history'
+                  ? 'bg-white text-stone-800 shadow-sm'
+                  : 'text-stone-500 hover:text-stone-700'
+                }
+              `}
+            >
+              <History className="w-4 h-4" />
+              历史
+            </button>
           </div>
           <button
             onClick={() => setRightPanelOpen(!rightPanelOpen)}
@@ -186,11 +203,13 @@ export default function App() {
                 onEditRelation={handleEditRelation}
                 onDeleteRelation={handleDeleteRelation}
               />
-            ) : (
+            ) : rightTab === 'analysis' ? (
               <AnalysisPanel
                 onFragmentClick={(id) => selectFragment(id)}
                 onRelationClick={(id) => selectRelation(id)}
               />
+            ) : (
+              <HistoryPanel />
             )}
           </div>
         </aside>
