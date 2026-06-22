@@ -1,15 +1,18 @@
 import { useState, useCallback } from 'react';
-import { Menu, X, List, Link, BarChart3, History } from 'lucide-react';
+import { Menu, X, List, Link, BarChart3, History, Users } from 'lucide-react';
 import GraphCanvas from '@/components/graph/GraphCanvas';
 import FragmentListPanel from '@/components/panels/FragmentListPanel';
 import RelationListPanel from '@/components/panels/RelationListPanel';
 import AnalysisPanel from '@/components/panels/AnalysisPanel';
 import HistoryPanel from '@/components/panels/HistoryPanel';
+import CollaborationPanel from '@/components/panels/CollaborationPanel';
 import FragmentDialog from '@/components/dialogs/FragmentDialog';
 import RelationDialog from '@/components/dialogs/RelationDialog';
+import ReviewDialog from '@/components/dialogs/ReviewDialog';
+import ArbitrationDialog from '@/components/dialogs/ArbitrationDialog';
 import { useStore } from '@/store/useStore';
 
-type RightPanelTab = 'relations' | 'analysis' | 'history';
+type RightPanelTab = 'relations' | 'analysis' | 'collaboration' | 'history';
 
 export default function App() {
   const { selectFragment, selectRelation, deleteFragment, deleteRelation } = useStore();
@@ -25,6 +28,13 @@ export default function App() {
   const [editingRelationId, setEditingRelationId] = useState<string | null>(null);
   const [defaultSourceId, setDefaultSourceId] = useState<string | null>(null);
   const [defaultTargetId, setDefaultTargetId] = useState<string | null>(null);
+
+  const [reviewDialogOpen, setReviewDialogOpen] = useState(false);
+  const [reviewRelationId, setReviewRelationId] = useState<string>('');
+  const [editReviewId, setEditReviewId] = useState<string | null>(null);
+
+  const [arbitrationDialogOpen, setArbitrationDialogOpen] = useState(false);
+  const [arbitrationId, setArbitrationId] = useState<string>('');
 
   const handleAddFragment = useCallback(() => {
     setEditingFragmentId(null);
@@ -72,6 +82,17 @@ export default function App() {
     setDefaultSourceId(sourceId);
     setDefaultTargetId(targetId);
     setRelationDialogOpen(true);
+  }, []);
+
+  const handleOpenReviewDialog = useCallback((relationId: string, editReviewId?: string | null) => {
+    setReviewRelationId(relationId);
+    setEditReviewId(editReviewId ?? null);
+    setReviewDialogOpen(true);
+  }, []);
+
+  const handleOpenArbitrationDialog = useCallback((arbId: string) => {
+    setArbitrationId(arbId);
+    setArbitrationDialogOpen(true);
   }, []);
 
   return (
@@ -132,6 +153,22 @@ export default function App() {
             >
               <BarChart3 className="w-4 h-4" />
               分析
+            </button>
+            <button
+              onClick={() => {
+                setRightPanelOpen(true);
+                setRightTab('collaboration');
+              }}
+              className={`
+                px-3 py-1.5 rounded-md text-sm font-medium flex items-center gap-1.5 transition-colors
+                ${rightPanelOpen && rightTab === 'collaboration'
+                  ? 'bg-white text-stone-800 shadow-sm'
+                  : 'text-stone-500 hover:text-stone-700'
+                }
+              `}
+            >
+              <Users className="w-4 h-4" />
+              协同
             </button>
             <button
               onClick={() => {
@@ -208,6 +245,11 @@ export default function App() {
                 onFragmentClick={(id) => selectFragment(id)}
                 onRelationClick={(id) => selectRelation(id)}
               />
+            ) : rightTab === 'collaboration' ? (
+              <CollaborationPanel
+                onOpenReviewDialog={handleOpenReviewDialog}
+                onOpenArbitrationDialog={handleOpenArbitrationDialog}
+              />
             ) : (
               <HistoryPanel />
             )}
@@ -227,6 +269,22 @@ export default function App() {
         editRelationId={editingRelationId}
         defaultSourceId={defaultSourceId}
         defaultTargetId={defaultTargetId}
+      />
+
+      <ReviewDialog
+        isOpen={reviewDialogOpen}
+        onClose={() => {
+          setReviewDialogOpen(false);
+          setEditReviewId(null);
+        }}
+        relationId={reviewRelationId}
+        editReviewId={editReviewId}
+      />
+
+      <ArbitrationDialog
+        isOpen={arbitrationDialogOpen}
+        onClose={() => setArbitrationDialogOpen(false)}
+        arbitrationId={arbitrationId}
       />
     </div>
   );

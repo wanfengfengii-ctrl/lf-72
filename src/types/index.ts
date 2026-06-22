@@ -230,3 +230,146 @@ export interface HistoryFilter {
   dateTo?: string;
   operator?: string;
 }
+
+export enum ReviewVerdict {
+  SUPPORT = 'support',
+  OPPOSE = 'oppose',
+  ABSTAIN = 'abstain',
+  SUGGEST_REVIEW = 'suggest_review'
+}
+
+export const ReviewVerdictLabels: Record<ReviewVerdict, string> = {
+  [ReviewVerdict.SUPPORT]: '支持',
+  [ReviewVerdict.OPPOSE]: '反对',
+  [ReviewVerdict.ABSTAIN]: '弃权',
+  [ReviewVerdict.SUGGEST_REVIEW]: '建议复核'
+};
+
+export const ReviewVerdictColors: Record<ReviewVerdict, string> = {
+  [ReviewVerdict.SUPPORT]: '#10B981',
+  [ReviewVerdict.OPPOSE]: '#EF4444',
+  [ReviewVerdict.ABSTAIN]: '#6B7280',
+  [ReviewVerdict.SUGGEST_REVIEW]: '#F59E0B'
+};
+
+export enum ReviewEvidenceType {
+  EDGE_MORPHOLOGY = 'edge_morphology',
+  TEXT_CONTINUITY = 'text_continuity',
+  CONTENT_RELEVANCE = 'content_relevance',
+  SHAPE_MATCH = 'shape_match',
+  HISTORICAL_CONTEXT = 'historical_context',
+  OTHER = 'other'
+}
+
+export const ReviewEvidenceTypeLabels: Record<ReviewEvidenceType, string> = {
+  [ReviewEvidenceType.EDGE_MORPHOLOGY]: '边缘形态学',
+  [ReviewEvidenceType.TEXT_CONTINUITY]: '文字连续性',
+  [ReviewEvidenceType.CONTENT_RELEVANCE]: '内容关联性',
+  [ReviewEvidenceType.SHAPE_MATCH]: '形状匹配',
+  [ReviewEvidenceType.HISTORICAL_CONTEXT]: '历史语境',
+  [ReviewEvidenceType.OTHER]: '其他'
+};
+
+export interface Researcher {
+  id: string;
+  name: string;
+  title: string;
+  institution: string;
+  avatar?: string;
+  specialties: string[];
+}
+
+export interface Review {
+  id: string;
+  relationId: string;
+  fragmentPair: [string, string];
+  reviewerId: string;
+  verdict: ReviewVerdict;
+  confidence: number;
+  evidenceTypes: ReviewEvidenceType[];
+  justification: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export enum ArbitrationStatus {
+  PENDING = 'pending',
+  RESOLVED = 'resolved',
+  DISMISSED = 'dismissed'
+}
+
+export const ArbitrationStatusLabels: Record<ArbitrationStatus, string> = {
+  [ArbitrationStatus.PENDING]: '待仲裁',
+  [ArbitrationStatus.RESOLVED]: '已裁决',
+  [ArbitrationStatus.DISMISSED]: '已驳回'
+};
+
+export const ArbitrationStatusColors: Record<ArbitrationStatus, string> = {
+  [ArbitrationStatus.PENDING]: '#F59E0B',
+  [ArbitrationStatus.RESOLVED]: '#10B981',
+  [ArbitrationStatus.DISMISSED]: '#6B7280'
+};
+
+export enum ArbitrationOutcome {
+  ACCEPT_RELATION = 'accept_relation',
+  REJECT_RELATION = 'reject_relation',
+  REVISE_RELATION = 'revise_relation',
+  FURTHER_RESEARCH = 'further_research'
+}
+
+export const ArbitrationOutcomeLabels: Record<ArbitrationOutcome, string> = {
+  [ArbitrationOutcome.ACCEPT_RELATION]: '采纳关系',
+  [ArbitrationOutcome.REJECT_RELATION]: '否决关系',
+  [ArbitrationOutcome.REVISE_RELATION]: '修订关系',
+  [ArbitrationOutcome.FURTHER_RESEARCH]: '待进一步研究'
+};
+
+export interface Arbitration {
+  id: string;
+  relationId: string;
+  fragmentPair: [string, string];
+  status: ArbitrationStatus;
+  reviews: Review[];
+  consensusScore: number;
+  supportCount: number;
+  opposeCount: number;
+  abstainCount: number;
+  createdAt: string;
+  arbitratedAt?: string;
+  arbitratorId?: string;
+  outcome?: ArbitrationOutcome;
+  arbitrationNotes?: string;
+  finalConfidence?: number;
+}
+
+export interface ReviewSummary {
+  relationId: string;
+  fragmentPair: [string, string];
+  totalReviews: number;
+  supportCount: number;
+  opposeCount: number;
+  abstainCount: number;
+  avgConfidence: number;
+  weightedConfidence: number;
+  consensusScore: number;
+  hasConsensus: boolean;
+  needsArbitration: boolean;
+  latestReviewAt: string;
+}
+
+export interface ReviewTimelineEvent {
+  id: string;
+  type: 'review' | 'arbitration' | 'relation_change';
+  timestamp: string;
+  relationId: string;
+  fragmentPair: [string, string];
+  researcherId?: string;
+  researcherName?: string;
+  description: string;
+  details?: {
+    supportCount?: number;
+    opposeCount?: number;
+    finalConfidence?: number;
+    [key: string]: unknown;
+  };
+}

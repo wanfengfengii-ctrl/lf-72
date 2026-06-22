@@ -12,11 +12,20 @@ import {
   VersionDiff,
   FieldChange,
   OperationTarget,
-  HistoryFilter
+  HistoryFilter,
+  Review,
+  ReviewVerdict,
+  Researcher,
+  Arbitration,
+  ArbitrationStatus,
+  ArbitrationOutcome,
+  ReviewSummary,
+  ReviewTimelineEvent,
+  ReviewEvidenceType
 } from '@/types';
 import { validateFragmentCode, validateAddRelation, validateGrouping, validateGroupingDetailed } from '@/utils/validation';
 import { analyzeNetwork } from '@/utils/analysis';
-import { mockFragments, mockRelations } from '@/data/mockData';
+import { mockFragments, mockRelations, mockResearchers, mockReviews, mockArbitrations } from '@/data/mockData';
 
 const generateId = () => Math.random().toString(36).substring(2, 11);
 
@@ -128,6 +137,37 @@ interface AppState {
   getFilteredHistory: () => OperationRecord[];
 
   addNoteToOperation: (operationId: string, note: string) => void;
+
+  researchers: Researcher[];
+  currentResearcherId: string;
+  reviews: Review[];
+  arbitrations: Arbitration[];
+
+  setCurrentResearcher: (researcherId: string) => void;
+
+  addReview: (data: Omit<Review, 'id' | 'createdAt' | 'updatedAt'>) => { success: boolean; message: string };
+  updateReview: (id: string, data: Partial<Review>) => { success: boolean; message: string };
+  deleteReview: (id: string) => void;
+  getReviewsForRelation: (relationId: string) => Review[];
+  getReviewsByResearcher: (researcherId: string) => Review[];
+
+  calculateReviewSummary: (relationId: string) => ReviewSummary | null;
+  getAllReviewSummaries: () => ReviewSummary[];
+  getPendingArbitrations: () => Arbitration[];
+  getResolvedArbitrations: () => Arbitration[];
+
+  createArbitration: (relationId: string) => { success: boolean; message: string; arbitrationId?: string };
+  resolveArbitration: (
+    arbitrationId: string,
+    outcome: ArbitrationOutcome,
+    notes: string,
+    finalConfidence?: number
+  ) => { success: boolean; message: string };
+  dismissArbitration: (arbitrationId: string, notes: string) => { success: boolean; message: string };
+  getArbitrationForRelation: (relationId: string) => Arbitration | null;
+
+  getReviewTimeline: () => ReviewTimelineEvent[];
+  getReviewTimelineForRelation: (relationId: string) => ReviewTimelineEvent[];
 }
 
 export const useStore = create<AppState>()(
@@ -174,6 +214,11 @@ export const useStore = create<AppState>()(
         snapshots: [initialSnapshot],
         currentVersion: initialVersion,
         historyFilter: {},
+
+        researchers: JSON.parse(JSON.stringify(mockResearchers)),
+        currentResearcherId: 'researcher-001',
+        reviews: JSON.parse(JSON.stringify(mockReviews)),
+        arbitrations: JSON.parse(JSON.stringify(mockArbitrations)),
 
         addFragment: (data, note) => {
           const { fragments, recordOperation } = get();
@@ -735,6 +780,379 @@ export const useStore = create<AppState>()(
               r.id === operationId ? { ...r, note } : r
             )
           });
+        },
+
+        setCurrentResearcher: (researcherId) => {
+          set({ currentResearcherId: researcherId });
+        },
+
+        addReview: (data) => {
+          const { reviews, relations, researchers, currentResearcherId } = get();
+          const relation = relations.find((r) => r.id === data.relationId);
+          if (!relation) {
+            return { success: false, message: '关系不存在' };
+          }
+          const reviewer = researchers.find((r) => r.id === data.reviewerId);
+          if (!reviewer) {
+            return { success: false, message: '研究人员不存在' };
+          }
+          const existingReview = reviews.find(
+            (r) => r.relationId === data.relationId && r.reviewerId === data.reviewerId
+          );
+          if (existingReview) {
+            return { success: false, message: '您已对此关系提交过评议，可编辑修改' };
+          }
+          const now = new Date().toISOString();
+          const newReview: Review = {
+            ...data,
+            id: `review-${generateId()}`,
+            createdAt: now,
+            updatedAt: now
+          };
+          set({ reviews: [...reviews, newReview] });
+          const sourceFrag = relation.sourceId;
+          const targetFrag = relation.targetId;
+          const targets: OperationTarget[] = [
+            { type: 'relation', id: relation.id },
+            { type: 'fragment', id: sourceFrag },
+            { type: 'fragment', id: targetFrag }
+          ];
+          const changes: FieldChange[] = [
+            { field: 'verdict', newValue: data.verdict, label: '评议结论' },
+            { field: 'confidence', newValue: data.confidence, label: '可信度' },
+            { field: 'justification', newValue: data.justification, label: '依据说明' }
+          ];
+          const description = `提交评议 [${reviewer.name}] 对缀合关系的评议：${data.verdict === 'support' ? '支持' : data.verdict === 'oppose' ? '反对' : data.verdict === 'abstain' ? '弃权' : '建议复核'}`;
+          get().recordOperation(OperationType.NOTES_UPDATE, targets, changes, description, `可信度：${data.confidence}%`);
+          return { success: true, message: '评议提交成功' };
+        },
+
+        updateReview: (id, data) => {
+          const { reviews, researchers, currentResearcherId } = get();
+          const existing = reviews.find((r) => r.id === id);
+          if (!existing) {
+            return { success: false, message: '评议不存在' };
+          }
+          const updatedReview: Review = { ...existing, ...data, updatedAt: new Date().toISOString() };
+          const updatedReviews = reviews.map((r) => r.id === id ? updatedReview : r);
+          set({ reviews: updatedReviews });
+          const reviewer = researchers.find((r) => r.id === existing.reviewerId);
+          const changes: FieldChange[] = [];
+          if (data.verdict !== undefined && data.verdict !== existing.verdict) {
+            changes.push({ field: 'verdict', oldValue: existing.verdict, newValue: data.verdict, label: '评议结论' });
+          }
+          if (data.confidence !== undefined && data.confidence !== existing.confidence) {
+            changes.push({ field: 'confidence', oldValue: existing.confidence, newValue: data.confidence, label: '可信度' });
+          }
+          if (data.justification !== undefined && data.justification !== existing.justification) {
+            changes.push({ field: 'justification', newValue: data.justification, label: '依据说明' });
+          }
+          if (changes.length > 0) {
+            const targets: OperationTarget[] = [{ type: 'relation', id: existing.relationId }];
+            const description = `更新评议 [${reviewer?.name || existing.reviewerId}] 的评议`;
+            get().recordOperation(OperationType.NOTES_UPDATE, targets, changes, description);
+          }
+          return { success: true, message: '评议更新成功' };
+        },
+
+        deleteReview: (id) => {
+          const { reviews } = get();
+          set({ reviews: reviews.filter((r) => r.id !== id) });
+        },
+
+        getReviewsForRelation: (relationId) => {
+          return get().reviews.filter((r) => r.relationId === relationId);
+        },
+
+        getReviewsByResearcher: (researcherId) => {
+          return get().reviews.filter((r) => r.reviewerId === researcherId);
+        },
+
+        calculateReviewSummary: (relationId) => {
+          const { reviews, relations } = get();
+          const relation = relations.find((r) => r.id === relationId);
+          if (!relation) return null;
+          const relationReviews = reviews.filter((r) => r.relationId === relationId);
+          if (relationReviews.length === 0) return null;
+          const supportCount = relationReviews.filter((r) => r.verdict === ReviewVerdict.SUPPORT).length;
+          const opposeCount = relationReviews.filter((r) => r.verdict === ReviewVerdict.OPPOSE).length;
+          const abstainCount = relationReviews.filter((r) => r.verdict === ReviewVerdict.ABSTAIN).length;
+          const suggestCount = relationReviews.filter((r) => r.verdict === ReviewVerdict.SUGGEST_REVIEW).length;
+          const avgConfidence = relationReviews.reduce((sum, r) => sum + r.confidence, 0) / relationReviews.length;
+          const weightedConfidence = relationReviews.reduce((sum, r) => {
+            const weight = r.verdict === ReviewVerdict.SUPPORT ? 1 : r.verdict === ReviewVerdict.OPPOSE ? -1 : 0.5;
+            return sum + r.confidence * weight;
+          }, 0) / relationReviews.length;
+          const totalValid = supportCount + opposeCount;
+          const consensusScore = totalValid > 0 ? Math.abs(supportCount - opposeCount) / totalValid : 0;
+          const hasConsensus = consensusScore >= 0.6 && relationReviews.length >= 2;
+          const needsArbitration = !hasConsensus && relationReviews.length >= 2 && (supportCount > 0 && opposeCount > 0);
+          const latestReviewAt = relationReviews.reduce((latest, r) =>
+            r.updatedAt > latest ? r.updatedAt : latest, relationReviews[0].updatedAt
+          );
+          return {
+            relationId,
+            fragmentPair: [relation.sourceId, relation.targetId] as [string, string],
+            totalReviews: relationReviews.length,
+            supportCount,
+            opposeCount,
+            abstainCount: abstainCount + suggestCount,
+            avgConfidence: Math.round(avgConfidence),
+            weightedConfidence: Math.round(weightedConfidence),
+            consensusScore: Math.round(consensusScore * 100) / 100,
+            hasConsensus,
+            needsArbitration,
+            latestReviewAt
+          };
+        },
+
+        getAllReviewSummaries: () => {
+          const { relations } = get();
+          const summaries: ReviewSummary[] = [];
+          for (const rel of relations) {
+            const summary = get().calculateReviewSummary(rel.id);
+            if (summary) {
+              summaries.push(summary);
+            }
+          }
+          return summaries.sort((a, b) =>
+            new Date(b.latestReviewAt).getTime() - new Date(a.latestReviewAt).getTime()
+          );
+        },
+
+        getPendingArbitrations: () => {
+          return get().arbitrations.filter((a) => a.status === ArbitrationStatus.PENDING);
+        },
+
+        getResolvedArbitrations: () => {
+          return get().arbitrations.filter((a) => a.status !== ArbitrationStatus.PENDING);
+        },
+
+        createArbitration: (relationId) => {
+          const { arbitrations, relations, reviews, fragments, currentResearcherId, researchers } = get();
+          const relation = relations.find((r) => r.id === relationId);
+          if (!relation) {
+            return { success: false, message: '关系不存在' };
+          }
+          const existing = arbitrations.find((a) => a.relationId === relationId && a.status === ArbitrationStatus.PENDING);
+          if (existing) {
+            return { success: false, message: '此关系已有待仲裁事项' };
+          }
+          const relationReviews = reviews.filter((r) => r.relationId === relationId);
+          if (relationReviews.length < 2) {
+            return { success: false, message: '至少需要2条评议才能创建仲裁' };
+          }
+          const supportCount = relationReviews.filter((r) => r.verdict === ReviewVerdict.SUPPORT).length;
+          const opposeCount = relationReviews.filter((r) => r.verdict === ReviewVerdict.OPPOSE).length;
+          const abstainCount = relationReviews.filter((r) => r.verdict === ReviewVerdict.ABSTAIN || r.verdict === ReviewVerdict.SUGGEST_REVIEW).length;
+          const totalValid = supportCount + opposeCount;
+          const consensusScore = totalValid > 0 ? Math.abs(supportCount - opposeCount) / totalValid : 0;
+          const now = new Date().toISOString();
+          const newArbitration: Arbitration = {
+            id: `arbitration-${generateId()}`,
+            relationId,
+            fragmentPair: [relation.sourceId, relation.targetId] as [string, string],
+            status: ArbitrationStatus.PENDING,
+            reviews: JSON.parse(JSON.stringify(relationReviews)),
+            consensusScore: Math.round(consensusScore * 100) / 100,
+            supportCount,
+            opposeCount,
+            abstainCount,
+            createdAt: now
+          };
+          set({ arbitrations: [...arbitrations, newArbitration] });
+          const sourceFrag = fragments.find((f) => f.id === relation.sourceId);
+          const targetFrag = fragments.find((f) => f.id === relation.targetId);
+          const targets: OperationTarget[] = [
+            { type: 'relation', id: relationId },
+            { type: 'fragment', id: relation.sourceId, code: sourceFrag?.code, name: sourceFrag?.name },
+            { type: 'fragment', id: relation.targetId, code: targetFrag?.code, name: targetFrag?.name }
+          ];
+          const changes: FieldChange[] = [
+            { field: 'arbitration', newValue: 'created', label: '仲裁状态' },
+            { field: 'consensusScore', newValue: consensusScore, label: '共识度' }
+          ];
+          const currentResearcher = researchers.find((r) => r.id === currentResearcherId);
+          const description = `创建仲裁事项 [${sourceFrag?.code || relation.sourceId}] ↔ [${targetFrag?.code || relation.targetId}]`;
+          get().recordOperation(OperationType.NOTES_UPDATE, targets, changes, description, `由 ${currentResearcher?.name || currentResearcherId} 发起`);
+          return { success: true, message: '仲裁事项创建成功', arbitrationId: newArbitration.id };
+        },
+
+        resolveArbitration: (arbitrationId, outcome, notes, finalConfidence) => {
+          const { arbitrations, researchers, currentResearcherId, relations, updateRelation, fragments } = get();
+          const arbitration = arbitrations.find((a) => a.id === arbitrationId);
+          if (!arbitration) {
+            return { success: false, message: '仲裁事项不存在' };
+          }
+          if (arbitration.status !== ArbitrationStatus.PENDING) {
+            return { success: false, message: '此仲裁事项已处理' };
+          }
+          const now = new Date().toISOString();
+          const arbitrator = researchers.find((r) => r.id === currentResearcherId);
+          const updatedArbitration: Arbitration = {
+            ...arbitration,
+            status: ArbitrationStatus.RESOLVED,
+            arbitratedAt: now,
+            arbitratorId: currentResearcherId,
+            outcome,
+            arbitrationNotes: notes,
+            finalConfidence
+          };
+          set({
+            arbitrations: arbitrations.map((a) => a.id === arbitrationId ? updatedArbitration : a)
+          });
+          if (outcome === ArbitrationOutcome.ACCEPT_RELATION && finalConfidence !== undefined) {
+            updateRelation(arbitration.relationId, { confidence: finalConfidence }, `仲裁裁决：采纳关系，可信度调整为${finalConfidence}%`);
+          } else if (outcome === ArbitrationOutcome.REJECT_RELATION) {
+            updateRelation(arbitration.relationId, { confidence: 0 }, '仲裁裁决：否决关系');
+          } else if (outcome === ArbitrationOutcome.REVISE_RELATION && finalConfidence !== undefined) {
+            updateRelation(arbitration.relationId, { confidence: finalConfidence }, `仲裁裁决：修订关系，可信度调整为${finalConfidence}%`);
+          }
+          const sourceFrag = fragments.find((f) => f.id === arbitration.fragmentPair[0]);
+          const targetFrag = fragments.find((f) => f.id === arbitration.fragmentPair[1]);
+          const targets: OperationTarget[] = [
+            { type: 'relation', id: arbitration.relationId },
+            { type: 'fragment', id: arbitration.fragmentPair[0], code: sourceFrag?.code, name: sourceFrag?.name },
+            { type: 'fragment', id: arbitration.fragmentPair[1], code: targetFrag?.code, name: targetFrag?.name }
+          ];
+          const changes: FieldChange[] = [
+            { field: 'outcome', newValue: outcome, label: '仲裁结果' },
+            { field: 'status', oldValue: ArbitrationStatus.PENDING, newValue: ArbitrationStatus.RESOLVED, label: '仲裁状态' }
+          ];
+          const description = `仲裁裁决 [${sourceFrag?.code || ''}] ↔ [${targetFrag?.code || ''}]：${
+            outcome === ArbitrationOutcome.ACCEPT_RELATION ? '采纳关系' :
+            outcome === ArbitrationOutcome.REJECT_RELATION ? '否决关系' :
+            outcome === ArbitrationOutcome.REVISE_RELATION ? '修订关系' : '待进一步研究'
+          }`;
+          get().recordOperation(OperationType.NOTES_UPDATE, targets, changes, description, `仲裁员：${arbitrator?.name || currentResearcherId}\n${notes}`);
+          return { success: true, message: '仲裁裁决已记录' };
+        },
+
+        dismissArbitration: (arbitrationId, notes) => {
+          const { arbitrations, researchers, currentResearcherId, fragments } = get();
+          const arbitration = arbitrations.find((a) => a.id === arbitrationId);
+          if (!arbitration) {
+            return { success: false, message: '仲裁事项不存在' };
+          }
+          const now = new Date().toISOString();
+          const arbitrator = researchers.find((r) => r.id === currentResearcherId);
+          const updatedArbitration: Arbitration = {
+            ...arbitration,
+            status: ArbitrationStatus.DISMISSED,
+            arbitratedAt: now,
+            arbitratorId: currentResearcherId,
+            arbitrationNotes: notes
+          };
+          set({
+            arbitrations: arbitrations.map((a) => a.id === arbitrationId ? updatedArbitration : a)
+          });
+          const sourceFrag = fragments.find((f) => f.id === arbitration.fragmentPair[0]);
+          const targetFrag = fragments.find((f) => f.id === arbitration.fragmentPair[1]);
+          const targets: OperationTarget[] = [{ type: 'relation', id: arbitration.relationId }];
+          const changes: FieldChange[] = [
+            { field: 'status', oldValue: ArbitrationStatus.PENDING, newValue: ArbitrationStatus.DISMISSED, label: '仲裁状态' }
+          ];
+          const description = `驳回仲裁 [${sourceFrag?.code || ''}] ↔ [${targetFrag?.code || ''}]`;
+          get().recordOperation(OperationType.NOTES_UPDATE, targets, changes, description, `仲裁员：${arbitrator?.name || currentResearcherId}\n${notes}`);
+          return { success: true, message: '仲裁已驳回' };
+        },
+
+        getArbitrationForRelation: (relationId) => {
+          return get().arbitrations.find((a) => a.relationId === relationId) || null;
+        },
+
+        getReviewTimeline: () => {
+          const { reviews, arbitrations, relations, researchers, history } = get();
+          const events: ReviewTimelineEvent[] = [];
+          for (const review of reviews) {
+            const reviewer = researchers.find((r) => r.id === review.reviewerId);
+            events.push({
+              id: `timeline-review-${review.id}`,
+              type: 'review',
+              timestamp: review.createdAt,
+              relationId: review.relationId,
+              fragmentPair: review.fragmentPair,
+              researcherId: review.reviewerId,
+              researcherName: reviewer?.name,
+              description: `${reviewer?.name || review.reviewerId} 提交评议：${
+                review.verdict === ReviewVerdict.SUPPORT ? '支持' :
+                review.verdict === ReviewVerdict.OPPOSE ? '反对' :
+                review.verdict === ReviewVerdict.ABSTAIN ? '弃权' : '建议复核'
+              }（可信度：${review.confidence}%）`,
+              details: {
+                verdict: review.verdict,
+                confidence: review.confidence,
+                evidenceTypes: review.evidenceTypes
+              }
+            });
+          }
+          for (const arbitration of arbitrations) {
+            const arbitrator = arbitration.arbitratorId ? researchers.find((r) => r.id === arbitration.arbitratorId) : null;
+            if (arbitration.status === ArbitrationStatus.PENDING) {
+              events.push({
+                id: `timeline-arbitration-pending-${arbitration.id}`,
+                type: 'arbitration',
+                timestamp: arbitration.createdAt,
+                relationId: arbitration.relationId,
+                fragmentPair: arbitration.fragmentPair,
+                description: `创建仲裁事项（共识度：${Math.round(arbitration.consensusScore * 100)}%）`,
+                details: {
+                  status: arbitration.status,
+                  supportCount: arbitration.supportCount,
+                  opposeCount: arbitration.opposeCount
+                }
+              });
+            } else if (arbitration.arbitratedAt) {
+              events.push({
+                id: `timeline-arbitration-resolved-${arbitration.id}`,
+                type: 'arbitration',
+                timestamp: arbitration.arbitratedAt,
+                relationId: arbitration.relationId,
+                fragmentPair: arbitration.fragmentPair,
+                researcherId: arbitration.arbitratorId,
+                researcherName: arbitrator?.name,
+                description: `${arbitrator?.name || arbitration.arbitratorId} 作出仲裁：${
+                  arbitration.outcome === ArbitrationOutcome.ACCEPT_RELATION ? '采纳关系' :
+                  arbitration.outcome === ArbitrationOutcome.REJECT_RELATION ? '否决关系' :
+                  arbitration.outcome === ArbitrationOutcome.REVISE_RELATION ? '修订关系' :
+                  arbitration.outcome === ArbitrationOutcome.FURTHER_RESEARCH ? '待进一步研究' : '已驳回'
+                }`,
+                details: {
+                  status: arbitration.status,
+                  outcome: arbitration.outcome,
+                  finalConfidence: arbitration.finalConfidence
+                }
+              });
+            }
+          }
+          for (const record of history) {
+            if (record.type === OperationType.RELATION_ADD || record.type === OperationType.RELATION_UPDATE || record.type === OperationType.RELATION_DELETE) {
+              const relationTarget = record.targets.find((t) => t.type === 'relation');
+              const fragTargets = record.targets.filter((t) => t.type === 'fragment');
+              if (relationTarget && relationTarget.id && fragTargets.length >= 2) {
+                events.push({
+                  id: `timeline-relation-${record.id}`,
+                  type: 'relation_change',
+                  timestamp: record.timestamp,
+                  relationId: relationTarget.id,
+                  fragmentPair: [fragTargets[0].id!, fragTargets[1].id!] as [string, string],
+                  researcherName: record.operator,
+                  description: record.description,
+                  details: {
+                    operationType: record.type,
+                    changes: record.changes
+                  }
+                });
+              }
+            }
+          }
+          return events.sort((a, b) =>
+            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+          );
+        },
+
+        getReviewTimelineForRelation: (relationId) => {
+          return get().getReviewTimeline().filter((e) => e.relationId === relationId);
         }
       };
     },
@@ -746,7 +1164,11 @@ export const useStore = create<AppState>()(
         nodePositions: state.nodePositions,
         history: state.history,
         snapshots: state.snapshots,
-        currentVersion: state.currentVersion
+        currentVersion: state.currentVersion,
+        reviews: state.reviews,
+        arbitrations: state.arbitrations,
+        researchers: state.researchers,
+        currentResearcherId: state.currentResearcherId
       })
     }
   )
