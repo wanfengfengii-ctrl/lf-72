@@ -263,6 +263,13 @@ export const useStore = create<AppState>()(
           const newNodePositions = { ...nodePositions };
           delete newNodePositions[id];
 
+          set({
+            fragments: filteredFragments,
+            relations: filteredRelations,
+            selectedFragmentId: selectedFragmentId === id ? null : selectedFragmentId,
+            nodePositions: newNodePositions
+          });
+
           if (oldFragment) {
             const targets: OperationTarget[] = [{
               type: 'fragment',
@@ -277,13 +284,6 @@ export const useStore = create<AppState>()(
             const description = `删除残片 [${oldFragment.code}] ${oldFragment.name}`;
             recordOperation(OperationType.FRAGMENT_DELETE, targets, changes, description, note);
           }
-
-          set({
-            fragments: filteredFragments,
-            relations: filteredRelations,
-            selectedFragmentId: selectedFragmentId === id ? null : selectedFragmentId,
-            nodePositions: newNodePositions
-          });
         },
 
         selectFragment: (id) => {
@@ -390,6 +390,11 @@ export const useStore = create<AppState>()(
           const { relations, selectedRelationId, fragments, recordOperation } = get();
           const oldRelation = relations.find((r) => r.id === id);
 
+          set({
+            relations: relations.filter((r) => r.id !== id),
+            selectedRelationId: selectedRelationId === id ? null : selectedRelationId
+          });
+
           if (oldRelation) {
             const sourceFrag = fragments.find((f) => f.id === oldRelation.sourceId);
             const targetFrag = fragments.find((f) => f.id === oldRelation.targetId);
@@ -405,11 +410,6 @@ export const useStore = create<AppState>()(
             const description = `删除缀合关系 [${sourceFrag?.code || oldRelation.sourceId}] ↔ [${targetFrag?.code || oldRelation.targetId}]`;
             recordOperation(OperationType.RELATION_DELETE, targets, changes, description, note);
           }
-
-          set({
-            relations: relations.filter((r) => r.id !== id),
-            selectedRelationId: selectedRelationId === id ? null : selectedRelationId
-          });
         },
 
         selectRelation: (id) => {

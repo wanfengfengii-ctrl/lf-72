@@ -11,7 +11,8 @@ import {
   ChevronUp,
   X,
   BarChart3,
-  RefreshCw
+  RefreshCw,
+  AlertCircle
 } from 'lucide-react';
 import Dialog from '@/components/common/Dialog';
 import { useStore } from '@/store/useStore';
@@ -99,7 +100,7 @@ export default function VersionCompareDialog({
 }: VersionCompareDialogProps) {
   const { compareVersions, getSnapshotByVersion, restoreVersion, fragments } = useStore();
   const [expandedSection, setExpandedSection] = useState<string | null>('all');
-  const [restoreConfirm, setRestoreConfirm] = useState(false);
+  const [restoreConfirmTarget, setRestoreConfirmTarget] = useState<1 | 2 | null>(null);
 
   const diff = useMemo((): VersionDiff | null => {
     if (!isOpen) return null;
@@ -128,12 +129,20 @@ export default function VersionCompareDialog({
   };
 
   const handleRestoreV1 = () => {
-    restoreVersion(v1);
-    onClose();
+    setRestoreConfirmTarget(1);
   };
 
   const handleRestoreV2 = () => {
-    restoreVersion(v2);
+    setRestoreConfirmTarget(2);
+  };
+
+  const confirmRestore = () => {
+    if (restoreConfirmTarget === 1) {
+      restoreVersion(v1);
+    } else if (restoreConfirmTarget === 2) {
+      restoreVersion(v2);
+    }
+    setRestoreConfirmTarget(null);
     onClose();
   };
 
@@ -274,7 +283,7 @@ export default function VersionCompareDialog({
                 {snapA ? new Date(snapA.timestamp).toLocaleString('zh-CN') : ''}
               </div>
               <button
-                onClick={() => setRestoreConfirm(true)}
+                onClick={handleRestoreV1}
                 className="text-[11px] px-3 py-1 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded flex items-center gap-1 mx-auto transition-colors"
               >
                 <RefreshCw className="w-3 h-3" />
@@ -400,25 +409,36 @@ export default function VersionCompareDialog({
       )}
 
       <Dialog
-        isOpen={restoreConfirm}
-        onClose={() => setRestoreConfirm(false)}
-        title={`恢复到版本 v${v1}`}
+        isOpen={restoreConfirmTarget !== null}
+        onClose={() => setRestoreConfirmTarget(null)}
+        title={`恢复到版本 v${restoreConfirmTarget === 1 ? v1 : v2}`}
       >
         <div className="space-y-4">
-          <p className="text-sm text-stone-600">
-            确定要恢复到版本 v{v1} 吗？此操作将创建新版本并保留所有历史记录。
-          </p>
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-amber-900">
+                  即将恢复到版本 v{restoreConfirmTarget === 1 ? v1 : v2}
+                </p>
+                <p className="text-xs text-amber-700 leading-relaxed">
+                  恢复操作将创建一个新的版本，包含所选版本的完整状态。当前版本的所有历史记录将被保留，可随时再次切换。
+                </p>
+              </div>
+            </div>
+          </div>
           <div className="flex justify-end gap-2">
             <button
-              onClick={() => setRestoreConfirm(false)}
-              className="px-4 py-2 text-sm text-stone-600 hover:bg-stone-100 rounded-md"
+              onClick={() => setRestoreConfirmTarget(null)}
+              className="px-4 py-2 text-sm text-stone-600 hover:bg-stone-100 rounded-md transition-colors"
             >
               取消
             </button>
             <button
-              onClick={handleRestoreV1}
-              className="px-4 py-2 text-sm bg-amber-600 text-white rounded-md hover:bg-amber-700"
+              onClick={confirmRestore}
+              className="px-4 py-2 text-sm bg-amber-600 text-white rounded-md hover:bg-amber-700 transition-colors flex items-center gap-1.5"
             >
+              <RefreshCw className="w-4 h-4" />
               确认恢复
             </button>
           </div>

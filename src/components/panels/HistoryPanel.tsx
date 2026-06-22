@@ -97,6 +97,7 @@ export default function HistoryPanel() {
   const [showFilters, setShowFilters] = useState(false);
   const [compareDialogOpen, setCompareDialogOpen] = useState(false);
   const [compareVersionA, setCompareVersionA] = useState<number | null>(null);
+  const [compareVersionB, setCompareVersionB] = useState<number | null>(null);
   const [compareMode, setCompareMode] = useState(false);
   const [restoreConfirmVersion, setRestoreConfirmVersion] = useState<number | null>(null);
   const [noteEditingId, setNoteEditingId] = useState<string | null>(null);
@@ -139,6 +140,7 @@ export default function HistoryPanel() {
       setCompareVersionA(version);
       setCompareMode(true);
     } else {
+      setCompareVersionB(version);
       setCompareDialogOpen(true);
     }
   };
@@ -146,6 +148,7 @@ export default function HistoryPanel() {
   const handleCancelCompare = () => {
     setCompareMode(false);
     setCompareVersionA(null);
+    setCompareVersionB(null);
   };
 
   const handleToggleFilterType = (type: OperationType) => {
@@ -622,7 +625,7 @@ export default function HistoryPanel() {
           handleCancelCompare();
         }}
         versionA={compareVersionA!}
-        versionB={filteredHistory[0]?.version ?? currentVersion}
+        versionB={compareVersionB!}
       />
     </div>
   );
